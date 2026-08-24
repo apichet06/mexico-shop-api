@@ -1,0 +1,101 @@
+{
+  "auth_session": {
+    "200": {
+      "name": "OK",
+      "description": "เข้าสู่ระบบหรือรีเฟรชเซสชันสำเร็จ"
+    },
+    "201": {
+      "name": "Created",
+      "description": "สร้างข้อมูลใหม่สำเร็จ เช่น การสร้างผู้ใช้งาน"
+    },
+    "401": {
+      "name": "Unauthorized",
+      "description": "ไม่ผ่านการยืนยันตัวตน เช่น ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง โทเคนหมดอายุ หรือพนักงานพ้นสภาพ"
+    },
+    "403": {
+      "name": "Forbidden",
+      "description": "ยืนยันตัวตนแล้ว แต่ไม่มีสิทธิ์เข้าถึงหรือไม่มีสิทธิ์ดำเนินการ"
+    }
+  },
+
+  "validation": {
+    "400": {
+      "name": "Bad Request",
+      "description": "รูปแบบคำขอไม่ถูกต้อง พารามิเตอร์ผิดชนิด หรือโครงสร้าง JSON ไม่ถูกต้อง"
+    },
+    "422": {
+      "name": "Unprocessable Entity",
+      "description": "รูปแบบคำขอถูกต้อง แต่ข้อมูลไม่ผ่านเงื่อนไขทางธุรกิจ เช่น ข้อมูลไม่ครบ วันเริ่มมากกว่าวันสิ้นสุด หรือจำนวนวันลาเกินสิทธิ์"
+    }
+  },
+
+  "resource": {
+    "404": {
+      "name": "Not Found",
+      "description": "ไม่พบข้อมูลหรือทรัพยากรที่ร้องขอ"
+    },
+    "410": {
+      "name": "Gone",
+      "description": "ข้อมูลเคยมีอยู่ แต่ถูกลบหรือยกเลิกการใช้งานถาวรแล้ว"
+    }
+  },
+
+  "conflict": {
+    "409": {
+      "name": "Conflict",
+      "description": "สถานะของข้อมูลขัดแย้งกับการดำเนินการ เช่น ข้อมูลซ้ำ ช่วงเวลาซ้อน หรือข้อมูลถูกแก้ไขไปแล้ว"
+    }
+  },
+
+  "workflow_permission": {
+    "403": {
+      "name": "Forbidden",
+      "description": "ไม่มีสิทธิ์ในขั้นตอนการทำงานหรือการอนุมัติ เช่น ไม่ใช่ผู้มีอำนาจอนุมัติ"
+    },
+    "423": {
+      "name": "Locked",
+      "description": "ข้อมูลหรือทรัพยากรถูกล็อกชั่วคราว เช่น ปิดงวดบัญชี หรืออยู่ระหว่างการตรวจสอบ"
+    }
+  },
+
+  "rate_limit": {
+    "429": {
+      "name": "Too Many Requests",
+      "description": "เรียกใช้งานระบบบ่อยเกินกว่าที่กำหนด"
+    }
+  },
+
+  "server": {
+    "500": {
+      "name": "Internal Server Error",
+      "description": "เกิดข้อผิดพลาดภายในระบบ"
+    },
+    "502": {
+      "name": "Bad Gateway",
+      "description": "ระบบปลายทางไม่สามารถตอบสนองได้"
+    },
+    "503": {
+      "name": "Service Unavailable",
+      "description": "ระบบไม่พร้อมใช้งานชั่วคราวหรืออยู่ระหว่างการปรับปรุง"
+    },
+    "504": {
+      "name": "Gateway Timeout",
+      "description": "ระบบปลายทางตอบสนองช้าเกินเวลาที่กำหนด"
+    }
+  },
+
+  "recommended_response_format": {
+    "status": "error",
+    "code": "BUSINESS_ERROR_CODE",
+    "message": "ข้อความแสดงข้อผิดพลาดสำหรับผู้ใช้งาน"
+  },
+
+  "login_logic_summary": {
+    "authentication_failed_or_resigned": 401,
+    "authorized_but_forbidden": 403,
+    "validation_failed": 422,
+    "business_conflict": 409,
+    "resource_not_found": 404,
+    "server_error": 500
+  }
+}

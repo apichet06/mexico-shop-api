@@ -1,0 +1,18 @@
+// SELECT list
+export async function listCategories() {
+   return pool.query(...)
+}
+
+// CREATE / UPDATE / DELETE
+export async function createCategory() {
+   const conn = await pool.getConnection();
+   try {
+      await conn.beginTransaction();
+      ...
+      await conn.commit();
+   } catch {
+      await conn.rollback();
+   } finally {
+      conn.release();
+   }
+}
