@@ -32,11 +32,12 @@ export type NotificationInput = {
 export type PlatformNotificationInput = Omit<NotificationInput, "target_id">
 
 export function mapPriorityToType(status: string) {
+    // ป้ายระดับความสำคัญของกระดิ่งใช้ภาษาสเปนให้ตรงกับข้อความที่ API บันทึก
     const map: Record<string, string> = {
-        LOW: "ความสำคัญต่ำ",
-        NORMAL: "ความสำคัญปกติ",
-        HIGH: "ความสำคัญสูง",
-        URGENT: "เร่งด่วน"
+        LOW: "Baja",
+        NORMAL: "Normal",
+        HIGH: "Alta",
+        URGENT: "Urgente"
     }
     return map[status] ?? 'NORMAL'
 }

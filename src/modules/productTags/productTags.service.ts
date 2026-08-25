@@ -33,9 +33,10 @@ export async function create(input: CreateProductTagsInput): Promise<number> {
 
         const ptag_id = masterRes.insertId;
         const langRows = [
-            [ptag_id, "th", t.th],
+            [ptag_id, "es", t.es],
             [ptag_id, "en", t.en],
             [ptag_id, "ja", t.ja],
+            [ptag_id, "th", t.th],
         ];
 
         await conn.query(`INSERT INTO ProductTagLangs (ptag_id, lg_code, ptag_name) VALUES ? `, [langRows]);

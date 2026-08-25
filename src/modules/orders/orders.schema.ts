@@ -3,13 +3,9 @@ import { pool } from "../../db/pool.js";
 
 let orderShippingColumnsReady: Promise<void> | null = null;
 let orderShipmentTablesReady: Promise<void> | null = null;
-let payoutSettingsTableReady: Promise<void> | null = null;
 let refundColumnsReady: Promise<void> | null = null;
 let refundMethodColumnReady: Promise<void> | null = null;
 let refundImagesTableReady: Promise<void> | null = null;
-let payoutHistoryTableReady: Promise<void> | null = null;
-let payoutOrdersTableReady: Promise<void> | null = null;
-let storePayoutColumnReady: Promise<void> | null = null;
 
 // สร้างตารางรูปภาพคำขอคืนเงินถ้ายังไม่มี เพื่อรองรับหลักฐานจาก buyer
 export async function ensureRefundImagesTable(): Promise<void> {
@@ -168,93 +164,4 @@ export async function ensureOrderShipmentTables(): Promise<void> {
     })();
 
     return orderShipmentTablesReady;
-}
-
-// สร้างตารางตั้งค่ารอบจ่ายเงินให้ร้าน และใส่ค่า default ถ้ายังไม่มี
-export async function ensurePayoutSettingsTable(): Promise<void> {
-    payoutSettingsTableReady ??= pool.query(`
-        CREATE TABLE IF NOT EXISTS Payout_settings (
-            ps_id TINYINT NOT NULL,
-            payout_cycle_days INT NOT NULL DEFAULT 7,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (ps_id)
-        )
-    `)
-        .then(async () => {
-            await pool.query(
-                `INSERT INTO Payout_settings (ps_id, payout_cycle_days)
-                 VALUES (1, 7)
-                 ON DUPLICATE KEY UPDATE ps_id = ps_id`
-            );
-        })
-        .then(() => undefined);
-
-    return payoutSettingsTableReady;
-}
-
-// สร้างตารางประวัติการโอนเงิน payout ไปยังร้านค้า
-export async function ensurePayoutHistoryTable(): Promise<void> {
-    payoutHistoryTableReady ??= pool.query(`
-        CREATE TABLE IF NOT EXISTS Payout_history (
-            ph_id INT AUTO_INCREMENT PRIMARY KEY,
-            st_id INT NOT NULL,
-            st_company_name VARCHAR(255) NULL,
-            omise_transfer_id VARCHAR(64) NOT NULL,
-            omise_recipient_id VARCHAR(64) NOT NULL,
-            amount INT NOT NULL,
-            currency VARCHAR(8) NOT NULL DEFAULT 'THB',
-            status VARCHAR(32) NOT NULL DEFAULT 'pending',
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-    `)
-        .then(async () => {
-            const [cols] = await pool.query<(RowDataPacket & { column_name: string })[]>(
-                `SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS
-                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Payout_history'
-                 AND COLUMN_NAME IN ('status', 'updated_at')`
-            );
-            const existing = new Set(cols.map((c) => c.column_name));
-            if (!existing.has("status")) {
-                await pool.query("ALTER TABLE Payout_history ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'pending' AFTER currency");
-            }
-            if (!existing.has("updated_at")) {
-                await pool.query("ALTER TABLE Payout_history ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
-            }
-        })
-        .then(() => undefined);
-    return payoutHistoryTableReady;
-}
-
-// สร้างตารางผูก payout history กับ order ที่ถูกรวมยอดโอน
-export async function ensurePayoutOrdersTable(): Promise<void> {
-    payoutOrdersTableReady ??= pool.query(`
-        CREATE TABLE IF NOT EXISTS Payout_orders (
-            pao_id INT AUTO_INCREMENT PRIMARY KEY,
-            ph_id INT NOT NULL,
-            or_id INT NOT NULL,
-            net_amount INT NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_payout_order (or_id)
-        )
-    `).then(() => undefined);
-    return payoutOrdersTableReady;
-}
-
-// เพิ่ม flag เปิด/ปิด payout รายร้านใน Store ถ้ายังไม่มี
-export async function ensureStorePayoutEnabledColumn(): Promise<void> {
-    storePayoutColumnReady ??= pool.query<(RowDataPacket & { column_name: string })[]>(
-        `SELECT COLUMN_NAME AS column_name
-         FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = 'Store'
-           AND COLUMN_NAME = 'payout_enabled'`
-    ).then(async ([cols]) => {
-        if (cols.length === 0) {
-            await pool.query(
-                "ALTER TABLE Store ADD COLUMN payout_enabled TINYINT(1) NOT NULL DEFAULT 1"
-            );
-        }
-    }).then(() => undefined);
-    return storePayoutColumnReady;
 }

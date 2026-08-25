@@ -88,7 +88,7 @@ export async function addCartItem(input: AddCartItemInput): Promise<CartItemDTO>
     }
 }
 
-export async function getCart(u_id: number, lg_code = "th"): Promise<CartDTO> {
+export async function getCart(u_id: number, lg_code = "es"): Promise<CartDTO> {
     const conn = await pool.getConnection();
     try {
         const [cartRows] = await conn.query<(RowDataPacket & { cart_id: number; status: string })[]>(

@@ -41,9 +41,10 @@ export async function CreateUnit(input: CreateUnitInput): Promise<number> {
 
         const u_id = masterRes.insertId;
         const langRows = [
-            [u_id, "th", t.th],
+            [u_id, "es", t.es],
             [u_id, "en", t.en],
             [u_id, "ja", t.ja],
+            [u_id, "th", t.th],
         ];
 
         await conn.query(`INSERT INTO UnitLangs (u_id, lg_code, ul_name) VALUES ? `, [langRows]);

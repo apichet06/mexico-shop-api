@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/errors/ApiError.js";
 import * as service from "./carts.service.js";
 
 function getRequestLanguage(value: unknown): string {
-    return typeof value === "string" && ["th", "en", "ja"].includes(value) ? value : "th";
+    return typeof value === "string" && ["es", "en", "ja", "th"].includes(value) ? value : "es";
 }
 
 export const getCart = asyncHandler(async (req, res) => {
@@ -63,4 +63,3 @@ export const DeleteItem = asyncHandler(async (req, res) => {
     await service.deleteCartItem(ci_id, u_id);
     res.status(200).json({ message: "ลบสินค้าออกจากตะกร้าแล้ว" });
 });
-

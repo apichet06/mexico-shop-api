@@ -13,6 +13,7 @@ export type LexicalRoot = {
 };
 
 export type MultiLangText = {
+    es: string;
     th: string;
     en: string;
     ja: string;
@@ -103,43 +104,49 @@ export function splitTranslatedTextSafely(translatedText: string, expectedCount:
 
 export async function translateLexicalContent(
     input: string | object | null | undefined
-): Promise<{ th: string; en: string; ja: string }> {
+): Promise<{ es: string; en: string; ja: string; th: string }> {
     const parsed = parseLexicalJson(input);
 
     if (!parsed || !parsed.root) {
-        return { th: "", en: "", ja: "" };
+        return { es: "", en: "", ja: "", th: "" };
     }
 
-    const thJson = deepClone(parsed);
+    const esJson = deepClone(parsed);
     const enJson = deepClone(parsed);
     const jaJson = deepClone(parsed);
+    const thJson = deepClone(parsed);
 
-    const thTextNodes = collectTextNodes(thJson.root);
+    const esTextNodes = collectTextNodes(esJson.root);
     const enTextNodes = collectTextNodes(enJson.root);
     const jaTextNodes = collectTextNodes(jaJson.root);
+    const thTextNodes = collectTextNodes(thJson.root);
 
-    if (thTextNodes.length === 0) {
+    if (esTextNodes.length === 0) {
         return {
-            th: JSON.stringify(thJson),
+            es: JSON.stringify(esJson),
             en: JSON.stringify(enJson),
             ja: JSON.stringify(jaJson),
+            th: JSON.stringify(thJson),
         };
     }
 
-    const joinedThaiText = joinTextNodesForTranslation(thTextNodes);
-    const translated = await translateProductText(joinedThaiText);
+    const joinedSpanishText = joinTextNodesForTranslation(esTextNodes);
+    const translated = await translateProductText(joinedSpanishText);
 
     // ใช้ตรงนี้
     const enParts = splitTranslatedTextSafely(translated.en, enTextNodes.length);
     const jaParts = splitTranslatedTextSafely(translated.ja, jaTextNodes.length);
+    const thParts = splitTranslatedTextSafely(translated.th, thTextNodes.length);
 
     replaceTextNodes(enTextNodes, enParts);
     replaceTextNodes(jaTextNodes, jaParts);
+    replaceTextNodes(thTextNodes, thParts);
 
     return {
-        th: JSON.stringify(thJson),
+        es: JSON.stringify(esJson),
         en: JSON.stringify(enJson),
         ja: JSON.stringify(jaJson),
+        th: JSON.stringify(thJson),
     };
 }
 

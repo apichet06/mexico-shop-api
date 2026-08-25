@@ -12,10 +12,8 @@ import type {
   UpdateZoneRuleInput,
   CalculateInput,
   CalculateResult,
-  StoreShippingCarrier,
 } from "./shipping.type.js";
 import { getShippopCarrierPreset, normalizeShippopCourierCode, quoteShippopRates } from "./providers/shippop.js";
-import { ensureStoreShippingCarriersTable } from "./shipping.schema.js";
 
 // ─── Carriers ────────────────────────────────────────────────────────────────
 
@@ -84,63 +82,6 @@ export async function listCarriers(): Promise<ShippingCarrier[]> {
     "SELECT * FROM Shipping_carriers ORDER BY sc_id"
   );
   return rows as ShippingCarrier[];
-}
-
-// รายการขนส่งกลางทั้งหมดที่ active พร้อมระบุว่าร้านนี้เปิดใช้ตัวไหนบ้าง (ยังไม่เคยตั้งค่า = เปิดใช้ทุกตัวเป็น default)
-export async function listStoreCarriers(stId: number): Promise<StoreShippingCarrier[]> {
-  await ensureShippingCarrierProviderColumn();
-  await ensureStoreShippingCarriersTable();
-
-  const [carriers] = await pool.query(
-    "SELECT * FROM Shipping_carriers WHERE is_active = 1 ORDER BY sc_id"
-  );
-  const [enabledRows] = await pool.query(
-    "SELECT sc_id FROM Store_shipping_carriers WHERE st_id = ?",
-    [stId]
-  );
-  const enabledIds = (enabledRows as { sc_id: number }[]).map((row) => row.sc_id);
-  const hasCustomSelection = enabledIds.length > 0;
-  const enabledSet = new Set(enabledIds);
-
-  return (carriers as ShippingCarrier[]).map((carrier) => ({
-    ...carrier,
-    is_enabled: hasCustomSelection ? enabledSet.has(carrier.sc_id) : true,
-  }));
-}
-
-// บันทึก subset ขนส่งของร้าน แทนที่ทั้งชุด (full replace)
-export async function replaceStoreCarriers(stId: number, scIds: number[]): Promise<void> {
-  await ensureStoreShippingCarriersTable();
-
-  const uniqueScIds = Array.from(new Set(scIds));
-  if (uniqueScIds.length === 0) {
-    throw new ApiError(400, "กรุณาเลือกขนส่งอย่างน้อย 1 รายการ");
-  }
-
-  const [validRows] = await pool.query(
-    "SELECT sc_id FROM Shipping_carriers WHERE is_active = 1 AND sc_id IN (?)",
-    [uniqueScIds]
-  );
-  const validIds = new Set((validRows as { sc_id: number }[]).map((row) => row.sc_id));
-  if (validIds.size !== uniqueScIds.length) {
-    throw new ApiError(400, "มีขนส่งที่เลือกไม่ถูกต้องหรือไม่เปิดใช้งาน");
-  }
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.query("DELETE FROM Store_shipping_carriers WHERE st_id = ?", [stId]);
-    await conn.query(
-      "INSERT INTO Store_shipping_carriers (st_id, sc_id) VALUES ?",
-      [uniqueScIds.map((scId) => [stId, scId])]
-    );
-    await conn.commit();
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
-  }
 }
 
 export async function createCarrier(input: CreateCarrierInput): Promise<number> {
@@ -493,7 +434,6 @@ async function assertNoZoneOverlap(
 
 export async function calculateShipping(input: CalculateInput): Promise<CalculateResult[]> {
   await ensureShippingCarrierProviderColumn();
-  await ensureStoreShippingCarriersTable();
   const postcode = Number(input.postcode);
   const weightG = Number(input.weight_g);
 
@@ -504,22 +444,10 @@ export async function calculateShipping(input: CalculateInput): Promise<Calculat
     throw new ApiError(400, "น้ำหนักต้องมากกว่า 0");
   }
 
-  // ถ้าระบุ st_id: ร้านที่ยังไม่เคยตั้งค่าขนส่งเอง (ไม่มีแถวใน Store_shipping_carriers) ใช้ขนส่งกลางทั้งหมดเป็น default
-  // ร้านที่ตั้งค่าแล้วจะเห็นเฉพาะขนส่งที่เลือกไว้
-  const [carriers] = input.st_id
-    ? await pool.query(
-        `SELECT sc.* FROM Shipping_carriers sc
-         WHERE sc.is_active = 1
-           AND (
-             NOT EXISTS (SELECT 1 FROM Store_shipping_carriers WHERE st_id = ?)
-             OR EXISTS (SELECT 1 FROM Store_shipping_carriers WHERE st_id = ? AND sc_id = sc.sc_id)
-           )
-         ORDER BY sc.sc_id`,
-        [input.st_id, input.st_id]
-      )
-    : await pool.query(
-        "SELECT * FROM Shipping_carriers WHERE is_active = 1 ORDER BY sc_id"
-      );
+  // ทุกร้านใช้รายการขนส่งกลางชุดเดียวกัน หน้า Shop/Checkout จึงเห็นขนส่งที่ active ทั้งหมด
+  const [carriers] = await pool.query(
+    "SELECT * FROM Shipping_carriers WHERE is_active = 1 ORDER BY sc_id"
+  );
 
   // ถ้ามี origin_postcode ให้ลองใช้ราคา live จาก SHIPPOP ก่อน เพราะ checkout ควรอิงราคาจริงจาก provider
   // rate table เดิมยังถูกใช้เป็น fallback เผื่อ SHIPPOP ล่ม/ยังไม่ได้ตั้ง API key/ต้องทดสอบใน local

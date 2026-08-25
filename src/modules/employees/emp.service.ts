@@ -4,6 +4,7 @@ import { pool } from "../../db/pool.js";
 import { ApiError, isDupError, isFkConstraintError } from "../../shared/errors/ApiError.js";
 import { CommonMessages } from "../../shared/messages/common.messages.js";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
 
 const MAX_SELLER_STORE_EMPLOYEES = 3;
 const EMPLOYEE_EMAIL_VERIFICATION_EXPIRES_HOURS = 48;
@@ -28,8 +29,7 @@ async function generateUserCode(): Promise<string> {
         throw err;
     }
 }
-export async function findByEmpLogin(e_email: string): Promise<empDTO | null> {
-    await ensureEmployeeEmailVerificationTable();
+export async function findByEmpLogin(e_usercode: string): Promise<empDTO | null> {
     await pool.query(`CREATE TABLE IF NOT EXISTS Store_Seller_Confirmation_Tokens (
         sct_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         st_id INT NOT NULL,
@@ -51,14 +51,26 @@ export async function findByEmpLogin(e_email: string): Promise<empDTO | null> {
         `SELECT a.*,
                 b.st_company_name,
                 b.st_image,
-                b.is_platform_store,
-                ${employeeEmailVerifiedAtSql("a")} AS e_email_verified_at
+                b.is_platform_store
         FROM Employees a 
         INNER JOIN Store b ON a.st_id = b.st_id
-        WHERE a.e_email = ?`,
-        [e_email],
+        WHERE LOWER(a.e_usercode) = LOWER(?)
+        LIMIT 1`,
+        [e_usercode],
     );
     return rows[0] || null;
+}
+
+export async function isEmployeeUsernameTaken(e_usercode: string, excludeEmployeeId?: number): Promise<boolean> {
+    const params: Array<string | number> = [e_usercode];
+    let sql = `SELECT e_id FROM Employees WHERE LOWER(e_usercode) = LOWER(?)`;
+    if (excludeEmployeeId) {
+        sql += ` AND e_id <> ?`;
+        params.push(excludeEmployeeId);
+    }
+    sql += ` LIMIT 1`;
+    const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+    return rows.length > 0;
 }
 
 async function ensurePasswordResetTable(): Promise<void> {
@@ -359,7 +371,7 @@ export async function markEmployeeEmailVerified(input: {
     );
 }
 
-export async function CreateEmpAdmins(input: CreateEmpInput): Promise<number> {
+export async function CreateEmpAdmins(input: CreateEmpInput): Promise<{ employeeId: number; username: string }> {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
@@ -373,14 +385,28 @@ export async function CreateEmpAdmins(input: CreateEmpInput): Promise<number> {
             throw new ApiError(400, `เพิ่มผู้ดูแลร้าน/พนักงานได้สูงสุด ${MAX_SELLER_STORE_EMPLOYEES} คน`);
         }
 
-        const platformStore = await isPlatformStore(stId);
-        if (!platformStore && !["Owner", "Staff"].includes(input.e_status)) {
-            throw new ApiError(400, "ร้านผู้ฝากขายเพิ่มได้เฉพาะ Owner หรือ Staff เท่านั้น");
+        if (!["Owner", "Staff"].includes(input.e_status)) {
+            throw new ApiError(400, "สิทธิ์ผู้ใช้งานต้องเป็น Admin หรือ User เท่านั้น");
         }
 
-        const [res] = await conn.query<ResultSetHeader>(`INSERT INTO Employees SET ?`, [input]);
+        const username = String(input.e_usercode ?? "").trim();
+        if (!username) {
+            throw new ApiError(400, "กรุณาระบุชื่อผู้ใช้");
+        }
+        if (await isEmployeeUsernameTaken(username)) {
+            throw new ApiError(409, "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
+        }
+        const employee = {
+            ...input,
+            e_usercode: username,
+            e_password: input.e_password || await bcrypt.hash(username, 10),
+            // คงค่าเฉพาะเพื่อรองรับฐานข้อมูลเดิมที่ e_email ยังเป็น NOT NULL
+            // ระบบไม่แสดงหรือใช้ค่านี้สำหรับการเข้าสู่ระบบอีกต่อไป
+            e_email: input.e_email?.trim() || `${username.toLowerCase()}@internal.local`,
+        };
+        const [res] = await conn.query<ResultSetHeader>(`INSERT INTO Employees SET ?`, [employee]);
         await conn.commit();
-        return res.insertId;
+        return { employeeId: res.insertId, username };
     } catch (err) {
         await conn.rollback();
         if (isDupError(err)) throw new ApiError(409, CommonMessages.isExits);
@@ -626,13 +652,10 @@ export async function UpdateEmpAdmins(e_id: number, input: Partial<UpdateEmpInpu
             throw new ApiError(404, CommonMessages.notFound);
         }
 
-        const nextEmail = input.e_email?.trim().toLowerCase();
-        const currentEmail = current.e_email?.trim().toLowerCase();
-        if (nextEmail && nextEmail !== currentEmail && current.e_email_verified_at) {
-            throw new ApiError(400, "อีเมลนี้ยืนยันแล้ว ไม่สามารถแก้ไขอีเมลได้");
-        }
-
         const nextStatus = input.e_status ?? current.e_status;
+        if (!["Owner", "Staff"].includes(nextStatus)) {
+            throw new ApiError(400, "สิทธิ์ผู้ใช้งานต้องเป็น Admin หรือ User เท่านั้น");
+        }
         const nextIsActive = input.e_isActive ?? current.e_isActive;
         const willStopBeingActiveOwner = current.e_status === "Owner" && (nextStatus !== "Owner" || !toActiveBoolean(nextIsActive));
 
@@ -724,7 +747,6 @@ export async function createEmp(inputStore: CreateStoreInput, inputEmp: CreateEm
             st_idcard: inputStore.st_idcard,
             bank_name: inputStore.bank_name,
             account_number: inputStore.account_number,
-            omise_recipient_id: inputStore.omise_recipient_id,
             st_email: inputStore.st_email,
             created_at: inputStore.created_at,
             st_phone: inputStore.st_phone,

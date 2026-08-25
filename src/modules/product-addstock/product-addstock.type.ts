@@ -15,6 +15,11 @@ export type ReduceStoskProduct = {
 }
 
 export type StockProductResponse = {
+    inv_id: number
+    loc_id: number
+    loc_name: string
+    state: string | null
+    country_code: "MX"
     pv_id: number,
     pv_sku: string
     pv_cost: number
@@ -51,7 +56,8 @@ export type InventoryLogResponse = {
     pv_sku?: string
     p_name?: string
     loc_name?: string
-    province?: string
+    state?: string | null
+    country_code?: "MX"
 }
 
 export type InactiveStockResponse = {
@@ -67,7 +73,8 @@ export type InactiveStockResponse = {
     on_hand: number
     reserved_qty: number
     loc_name: string
-    province: string
+    state: string | null
+    country_code: "MX"
     last_sold_at: string | null
     sold_qty: number
     inactive_days: number | null

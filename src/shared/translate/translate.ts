@@ -1,11 +1,11 @@
 import * as deepl from "deepl-node";
 import type { MultiLangText } from "../utils/ฺBase64Image/Lexical/LexicalFunction.js";
-import { EN, JA, translator } from "./translate.client.js";
+import { EN, ES, JA, TH, translator } from "./translate.client.js";
 
 
-export async function translateProductText(th: string): Promise<MultiLangText> {
-    const text = (th ?? "").trim();
-    if (!text) return { th: "", en: "", ja: "" };
+export async function translateProductText(es: string): Promise<MultiLangText> {
+    const text = (es ?? "").trim();
+    if (!text) return { es: "", en: "", ja: "", th: "" };
 
     // context ช่วยให้คำสั้นๆ แปลแม่นขึ้น (เช่น "สุขภาพ" จะไม่หลุดความหมาย) :contentReference[oaicite:2]{index=2}
     const options: deepl.TranslateTextOptions = {
@@ -24,15 +24,16 @@ export async function translateProductText(th: string): Promise<MultiLangText> {
                 Avoid casual or metaphorical meaning.`,
     };
 
-    // แปล 2 ภาษา (th คืนค่าเดิม)
-    const [enRes, jaRes] = await Promise.all([
-        translator.translateText(text, null, EN, options),
-        translator.translateText(text, null, JA, options),
+    const [enRes, jaRes, thRes] = await Promise.all([
+        translator.translateText(text, ES, EN, options),
+        translator.translateText(text, ES, JA, options),
+        translator.translateText(text, ES, TH, options),
     ]);
 
     return {
-        th: text,
+        es: text,
         en: enRes.text,
         ja: jaRes.text,
+        th: thRes.text,
     };
 }

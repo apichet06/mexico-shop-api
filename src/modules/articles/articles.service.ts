@@ -6,7 +6,7 @@ import { translateProductFields } from "../../shared/translate/translateProductF
 import { translateLexicalContent } from "../../shared/utils/ImageSrc/translateLexicalContent.js";
 import type { ArticleDTO, ArticleInput, ArticleSlugResponse, ArticleUpdateInput } from "./articles.type.js";
 
-const languages = ["th", "en", "ja"] as const;
+const languages = ["es", "en", "ja", "th"] as const;
 
 export async function list(st_id: number, lg_code: string): Promise<ArticleDTO[]> {
     const [rows] = await pool.query<(RowDataPacket & ArticleDTO)[]>(
@@ -96,7 +96,7 @@ async function getMaxGroupId(conn: PoolConnection): Promise<number> {
 }
 
 function removeLang(slug: string): string {
-    return slug.replace(/-(th|en|ja)$/, "");
+    return slug.replace(/-(es|en|ja|th)$/, "");
 }
 
 export async function generateUniqueSlug(slug: string): Promise<string> {

@@ -10,23 +10,25 @@ const translationJsonSchema = {
     type: "object",
     additionalProperties: false,
     properties: {
+        es: { type: "string" },
         th: { type: "string" },
         en: { type: "string" },
         ja: { type: "string" },
     },
-    required: ["th", "en", "ja"],
+    required: ["es", "th", "en", "ja"],
 } as const;
 
 // ใช้ zod validate "หลังบ้าน" อีกชั้น (optional แต่ดี)
 const TranslationSchema = z.object({
+    es: z.string(),
     th: z.string(),
     en: z.string(),
     ja: z.string(),
 });
 
-export async function translateNameGimini(th: string): Promise<{ th: string; en: string; ja: string }> {
-    const text = (th ?? "").trim();
-    if (!text) return { th: "", en: "", ja: "" };
+export async function translateNameGimini(es: string): Promise<{ es: string; en: string; ja: string; th: string }> {
+    const text = (es ?? "").trim();
+    if (!text) return { es: "", en: "", ja: "", th: "" };
 
     const res = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -36,11 +38,11 @@ export async function translateNameGimini(th: string): Promise<{ th: string; en:
                 parts: [
                     {
                         text: [
-                            "Translate the Thai e-commerce category name into en-US and Japanese.",
+                            "Translate the Spanish e-commerce category name into en-US, Japanese, and Thai.",
                             "Keep it short like a category label.",
                             "Return ONLY JSON that matches the provided schema (no markdown, no extra keys).",
                             "",
-                            `Thai: ${text}`,
+                            `Spanish: ${text}`,
                             "",
                             "Context:",
                             "This text is a short category label for a professional e-commerce platform.",
@@ -68,5 +70,5 @@ export async function translateNameGimini(th: string): Promise<{ th: string; en:
     });
 
     const parsed = TranslationSchema.parse(JSON.parse(res.text ?? "{}")); //   validate
-    return { th: text, en: parsed.en, ja: parsed.ja };
+    return { es: text, en: parsed.en, ja: parsed.ja, th: parsed.th };
 }

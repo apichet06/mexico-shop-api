@@ -489,7 +489,7 @@ export const confirmStoreEmail = asyncHandler(async (req, res) => {
 
 export const update = asyncHandler(async (req, res) => {
     const { st_id } = req.params;
-    const { st_company_name, bank_account_number, omise_recipient_id, st_email, st_phone, bk_id } = req.body;
+    const { st_company_name, bank_account_number, st_email, st_phone, bk_id } = req.body;
     const empId = Number(req.empId);
     const file = req.file;
     const oldImage = await store.getStoreById(Number(st_id)).then(store => store?.store.st_image);
@@ -514,7 +514,6 @@ export const update = asyncHandler(async (req, res) => {
     const input = {
         st_company_name,
         bank_account_number,
-        ...(omise_recipient_id !== undefined ? { omise_recipient_id: omise_recipient_id ? String(omise_recipient_id).trim() : null } : {}),
         st_email,
         st_phone,
         st_image: imagePath,

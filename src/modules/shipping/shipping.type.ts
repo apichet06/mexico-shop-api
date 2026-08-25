@@ -42,10 +42,6 @@ export interface CreateCarrierInput {
 
 export type UpdateCarrierInput = Partial<CreateCarrierInput>;
 
-export interface StoreShippingCarrier extends ShippingCarrier {
-  is_enabled: boolean;
-}
-
 export interface CreateRateInput {
   sc_id: number;
   zone_code: string;

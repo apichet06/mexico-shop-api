@@ -14,25 +14,27 @@ export function mapStatusToType(status: string) {
 }
 
 export function mapStatusToAction(status: string) {
+    // ข้อความนี้ถูกบันทึกทั้งในประวัติร้านและการแจ้งเตือน จึงใช้ภาษาสเปนเป็นภาษาหลัก
     const map: Record<string, string> = {
-        PENDING: 'ส่งคำขอเปิดร้าน',
-        PENDING_SELLER_CONFIRMATION: 'รอผู้ฝากขายยืนยันข้อมูลและ PDPA',
-        ACTIVE: 'อนุมัติ พร้อมใช้งาน',
-        REJECTED: 'ตีกลับคำขอ',
-        REQUEST_MORE: 'ขอเอกสารเพิ่มเติม',
-        UPLOAD: 'ส่งเอกสาร รอตรวจสอบ',
-        SUSPENDED: 'ระงับการใช้งาน'
+        PENDING: 'Solicitud de apertura de tienda enviada',
+        PENDING_SELLER_CONFIRMATION: 'Pendiente de confirmación de datos y aviso de privacidad por el consignador',
+        ACTIVE: 'Aprobada y activa',
+        REJECTED: 'Solicitud rechazada',
+        REQUEST_MORE: 'Se solicitaron documentos adicionales',
+        UPLOAD: 'Documentos enviados, pendientes de revisión',
+        SUSPENDED: 'Cuenta suspendida'
     }
 
     return map[status] ?? status
 }
 
 export function mapDocumetType(doc_type: string) {
+    // ชื่อเอกสารที่ใช้ประกอบข้อความแจ้งเตือนต้องถูกเก็บเป็นภาษาสเปน
     const map: Record<string, string> = {
-        VAT_CERT: 'ใบทะเบียนภาษีมูลค่าเพิ่ม ภ.พ.20',
-        COMPANY_CERT: 'หนังสือรับรองบริษัท',
-        ID_CARD: 'สำเนาบัตรประชาชน',
-        OTHER: 'อื่นๆ'
+        VAT_CERT: 'Constancia de situación fiscal',
+        COMPANY_CERT: 'Acta constitutiva de la empresa',
+        ID_CARD: 'Copia de identificación oficial',
+        OTHER: 'Otro'
     }
     return map[doc_type]
 }
@@ -53,7 +55,6 @@ export type StoreDTO = {
     st_company_name: string;
     st_idcard: string;
     bank_account_number: string;
-    omise_recipient_id: string | null;
     st_email: string;
     st_email_verified_at?: string | Date | null;
     created_at: string;
@@ -173,7 +174,6 @@ export type CreateStoreInput = {
 export type UpdateStoreInput = {
     st_company_name: string;
     bank_account_number: string;
-    omise_recipient_id?: string | null;
     st_email: string;
     st_phone: string;
     st_image: string | undefined;

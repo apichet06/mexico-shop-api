@@ -1,4 +1,5 @@
 export type MultiLangLexical = {
+    es: string;
     th: string;
     en: string;
     ja: string;

@@ -559,7 +559,7 @@ export async function getProductShopById(
                 inv.loc_id,
                 loc.st_id,
                 loc.loc_address AS location_name,
-                prov.name_in_thai AS province_name,
+                loc.state AS province_name,
                 COALESCE(inv.on_hand, 0) AS on_hand,
                 COALESCE(inv.reserved_qty, 0) AS reserved_qty,
                 COALESCE(inv.on_hand, 0) - COALESCE(inv.reserved_qty, 0) AS available_qty
@@ -568,8 +568,6 @@ export async function getProductShopById(
                 ON pv.pv_id = inv.pv_id
             LEFT JOIN Locations loc
                 ON loc.loc_id = inv.loc_id
-            LEFT JOIN Provinces prov
-                ON prov.id = loc.Provinces_id
             WHERE pv.p_id = ?
             ORDER BY
                 inv.pv_id ASC,
@@ -583,16 +581,14 @@ export async function getProductShopById(
         const [inventoryStoreRows] = await conn.query<(RowDataPacket & InventoryStoreDTO)[]>(
             `
             SELECT DISTINCT
-                prov.name_in_thai AS InventoryStoreProvince
+                loc.state AS InventoryStoreProvince
             FROM Inventorys inv
             INNER JOIN ProductVariants pv
                 ON pv.pv_id = inv.pv_id
             LEFT JOIN Locations loc
                 ON loc.loc_id = inv.loc_id
-            LEFT JOIN Provinces prov
-                ON prov.id = loc.Provinces_id
             WHERE pv.p_id = ?
-            ORDER BY prov.name_in_thai ASC
+            ORDER BY loc.state ASC
             `,
             [p_id]
         )

@@ -34,7 +34,7 @@ export const listProductShop = asyncHandler(async (req, res) => {
 
 export const getProductShopById = asyncHandler(async (req, res) => {
     const { p_id } = req.params;
-    const lg_code = req.params.lg_code as string || "th"; // Default to 'th' if not provided
+    const lg_code = req.params.lg_code as string || "es";
     const data = await productShopService.getProductShopById(Number(p_id), lg_code);
     res.status(200).json({ data });
 });

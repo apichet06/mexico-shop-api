@@ -13,7 +13,6 @@ import { categoryRouters } from "./modules/categorys/category.routes.js";
 import BrandRouter from "./modules/brands/brands.routes.js";
 import { unitRouters } from "./modules/units/units.routes.js";
 import { ProductTagRouter } from "./modules/productTags/productTags.routes.js";
-import { AddressRouter } from "./modules/address/address.routes.js";
 import { storeRouter } from "./modules/stores/store.routes.js";
 import path from "path";
 import { LocationRouter } from "./modules/locations/location.routes.js";
@@ -82,7 +81,6 @@ export function createApp() {
   app.use("/api/brands", BrandRouter);
   app.use("/api/units", unitRouters);
   app.use("/api/productTags", ProductTagRouter);
-  app.use("/api/address", AddressRouter);
   app.use("/api/stores", storeRouter);
   app.use("/api/locations", LocationRouter);
   app.use("/api/employee", EmpRouter);

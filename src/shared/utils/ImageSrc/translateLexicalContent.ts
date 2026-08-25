@@ -1,6 +1,6 @@
 import * as deepl from "deepl-node";
 import { buildTranslatedEditorState, extractTextsFromEditorState, } from "./lexical.utils.js";
-import { EN, JA, translator } from "../../translate/translate.client.js";
+import { EN, ES, JA, TH, translator } from "../../translate/translate.client.js";
 import type { LexicalEditorState, MultiLangLexical } from "./LexicalFunction.js";
 import { IS_DEV } from "../../config/env.js";
 
@@ -25,9 +25,10 @@ export async function translateLexicalContent(
     if (sourceTexts.length === 0) {
         const originalJson = JSON.stringify(editorState);
         return {
-            th: originalJson,
+            es: originalJson,
             en: originalJson,
             ja: originalJson,
+            th: originalJson,
         };
     }
 
@@ -36,9 +37,10 @@ export async function translateLexicalContent(
     if (!hasMeaningfulText) {
         const originalJson = JSON.stringify(editorState);
         return {
-            th: originalJson,
+            es: originalJson,
             en: originalJson,
             ja: originalJson,
+            th: originalJson,
         };
     }
 
@@ -56,13 +58,15 @@ export async function translateLexicalContent(
         preserveFormatting: true,
     };
 
-    const [enRes, jaRes] = await Promise.all([
-        translator.translateText(sourceTexts, null, EN, options),
-        translator.translateText(sourceTexts, null, JA, options),
+    const [enRes, jaRes, thRes] = await Promise.all([
+        translator.translateText(sourceTexts, ES, EN, options),
+        translator.translateText(sourceTexts, ES, JA, options),
+        translator.translateText(sourceTexts, ES, TH, options),
     ]);
 
     const enTexts = normalizeDeepLResult(enRes);
     const jaTexts = normalizeDeepLResult(jaRes);
+    const thTexts = normalizeDeepLResult(thRes);
 
     // if (IS_DEV) {
     //     console.log("🌍 EN result:");
@@ -89,11 +93,13 @@ export async function translateLexicalContent(
 
     const enEditorState = buildTranslatedEditorState(editorState, enTexts);
     const jaEditorState = buildTranslatedEditorState(editorState, jaTexts);
+    const thEditorState = buildTranslatedEditorState(editorState, thTexts);
 
     return {
-        th: JSON.stringify(editorState),
+        es: JSON.stringify(editorState),
         en: JSON.stringify(enEditorState),
         ja: JSON.stringify(jaEditorState),
+        th: JSON.stringify(thEditorState),
     };
 }
 

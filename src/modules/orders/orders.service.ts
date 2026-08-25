@@ -2,11 +2,11 @@ import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/prom
 import crypto from "crypto";
 import { pool } from "../../db/pool.js";
 import { ApiError } from "../../shared/errors/ApiError.js";
-import type { AdminOrderDTO, AdminOrderSummaryDTO, AdminPayoutHistoryDTO, AdminPayoutHistoryRowDTO, AdminPayoutSettingDTO, AdminPendingPayoutReportDTO, AdminPendingPayoutRowDTO, AdminSalesByBuyerReportDTO, AdminSalesByBuyerRowDTO, AdminSalesByCategoryReportDTO, AdminSalesByCategoryRowDTO, AdminSalesByProductReportDTO, AdminSalesByProductRowDTO, AdminSalesByVendorReportDTO, AdminSalesByVendorRowDTO, AdminSalesReportDTO, AdminSalesReportRowDTO, AdminToggleStorePayoutDTO, AdminTransferResultDTO, CheckoutOrderInput, CreateOrderInput, OrderDetailDTO, OrderDTO, OrderItemDTO, OrderShipmentDTO, OrderShipmentItemDTO, RefundHistoryEntryDTO, RefundItemDTO, ShipmentEventDTO, StoreShippingOptions } from "./type.js";
+import type { AdminOrderDTO, AdminOrderSummaryDTO, AdminSalesByBuyerReportDTO, AdminSalesByBuyerRowDTO, AdminSalesByCategoryReportDTO, AdminSalesByCategoryRowDTO, AdminSalesByProductReportDTO, AdminSalesByProductRowDTO, AdminSalesReportDTO, AdminSalesReportRowDTO, CheckoutOrderInput, CreateOrderInput, OrderDetailDTO, OrderDTO, OrderItemDTO, OrderShipmentDTO, OrderShipmentItemDTO, RefundHistoryEntryDTO, RefundItemDTO, ShipmentEventDTO, StoreShippingOptions } from "./type.js";
 import * as couponService from "../coupons/coupon.service.js";
 import * as shippingService from "../shipping/shipping.service.js";
 import type { CalculateResult } from "../shipping/shipping.type.js";
-import { chargeAndRecordPayment, createOmiseRefund, omiseRequest } from "../payments/payment.service.js";
+import { chargeAndRecordPayment, createOmiseRefund } from "../payments/payment.service.js";
 import type { PaymentResultDTO } from "../payments/payment.type.js";
 import { createShippopShipment, getShippopTracking, type ShippopTrackingState } from "../shipping/providers/shippop.js";
 import { getIO } from "../../socket/socket.js";
@@ -32,13 +32,9 @@ import {
 import {
     ensureOrderShipmentLabelColumn,
     ensureOrderShipmentTables,
-    ensurePayoutHistoryTable,
-    ensurePayoutOrdersTable,
-    ensurePayoutSettingsTable,
     ensureRefundImagesTable,
     ensureRefundMethodColumn,
     ensureRefundReturnTrackingColumn,
-    ensureStorePayoutEnabledColumn,
 } from "./orders.schema.js";
 
 const REFUND_REQUESTABLE_STATUS_CODES: OrderStatusCode[] = ["CONFIRMED", "PROCESSING", "PACKED", "DELIVERED"];
@@ -54,15 +50,6 @@ let autoReceiveJobStarted = false;
 // ปัดเศษจำนวนเงินให้เหลือ 2 ตำแหน่ง ใช้ตอนคำนวณยอด order/shipping/discount
 function roundMoney(value: number): number {
     return Math.round(value * 100) / 100;
-}
-
-// จำกัดจำนวนวันรอบ payout ให้อยู่ในช่วงที่ระบบยอมรับ
-function normalizePayoutCycleDays(value: number): number {
-    const days = Math.trunc(Number(value));
-    if (!Number.isFinite(days) || days < 1 || days > 365) {
-        throw new ApiError(400, "จำนวนวันรอบจ่ายต้องอยู่ระหว่าง 1 ถึง 365 วัน");
-    }
-    return days;
 }
 
 type CheckoutCartItemRow = RowDataPacket & {
@@ -158,9 +145,14 @@ const orderSelectSql = `
         o.shipping_phone,
         o.shipping_address,
         lb.zip_code AS shipping_zip_code,
-        prov.name_in_thai AS shipping_province_name,
-        dist.name_in_thai AS shipping_district_name,
-        subdist.name_in_thai AS shipping_subdistrict_name,
+        lb.country_code AS shipping_country_code,
+        lb.state AS shipping_state,
+        lb.city AS shipping_city,
+        lb.municipality AS shipping_municipality,
+        lb.colonia AS shipping_colonia,
+        lb.state AS shipping_province_name,
+        COALESCE(lb.municipality, lb.city) AS shipping_district_name,
+        lb.colonia AS shipping_subdistrict_name,
         o.remark,
         o.payment_expires_at,
         o.created_at,
@@ -174,11 +166,7 @@ const orderSelectSql = `
         ON lb.u_id = o.u_id
        AND lb.locb_recipient_name = o.shipping_name
        AND lb.locb_phone = o.shipping_phone
-       AND lb.locb_address = o.shipping_address
-    LEFT JOIN Provinces prov ON prov.id = lb.provinces_id
-    LEFT JOIN Districts dist ON dist.id = lb.districts_id
-    LEFT JOIN Subdistricts subdist ON subdist.id = lb.subdistricts_id
-    LEFT JOIN (
+       AND lb.locb_address = o.shipping_address    LEFT JOIN (
         SELECT r1.or_id, r1.refund_id, r1.amount, r1.status, r1.remark, r1.return_tracking, r1.updated_at, r1.refund_method
         FROM Refunds r1
         INNER JOIN (
@@ -265,23 +253,23 @@ type OrderNotificationOptions = {
 };
 
 const statusLabelByCode: Record<string, string> = {
-    PENDING: "รอชำระเงิน",
-    CONFIRMED: "ชำระเงินแล้ว",
-    PROCESSING: "กำลังเตรียมสินค้า",
-    PACKED: "แพ็กสินค้าแล้ว",
-    READY_TO_SHIP: "พร้อมจัดส่ง",
-    DELIVERED: "จัดส่งสำเร็จ",
-    RECEIVED: "ยืนยันรับสินค้าแล้ว",
-    AUTO_RECEIVED: "ระบบยืนยันรับสินค้าอัตโนมัติ",
-    REVIEWED: "ให้คะแนนแล้ว",
-    CANCELLED: "ยกเลิก",
-    REFUNDED: "คืนเงินแล้ว",
+    PENDING: "Pendiente de pago",
+    CONFIRMED: "Pago confirmado",
+    PROCESSING: "En preparación",
+    PACKED: "Empaquetado",
+    READY_TO_SHIP: "Listo para enviar",
+    DELIVERED: "Entregado",
+    RECEIVED: "Recepción confirmada",
+    AUTO_RECEIVED: "Recepción confirmada automáticamente",
+    REVIEWED: "Reseñado",
+    CANCELLED: "Cancelado",
+    REFUNDED: "Reembolsado",
 };
 
-// คืน label สถานะ order โดยใช้ label จาก DB ก่อน แล้วค่อย fallback เป็นข้อความ default
+// แจ้งเตือนถูกเก็บเป็นภาษาสเปน จึงเลือก label มาตรฐานก่อน label ที่มากับ query ภาษาอื่น
 function getOrderStatusLabel(order: Partial<OrderDTO>) {
     const statusCode = order.status_code ?? "";
-    return order.status_label || statusLabelByCode[statusCode] || statusCode || order.status || "-";
+    return statusLabelByCode[statusCode] || order.status_label || statusCode || order.status || "-";
 }
 
 // สร้าง URL ไปหน้า order detail ฝั่งร้าน/backoffice
@@ -384,8 +372,8 @@ async function notifyPlatformManualRefundNeeded(order: Pick<OrderDTO, "or_id" | 
         await notificationService.NotifyPlatformStores({
             target_type: "STORE",
             type: "order:manual_refund_needed",
-            title: "ต้องคืนเงินลูกค้าเอง",
-            message: `คำสั่งซื้อ ${order.order_no}${order.st_company_name ? ` จากร้าน ${order.st_company_name}` : ""} คืนเงินผ่าน Omise ไม่สำเร็จ ต้องดำเนินการโอนเงินคืนลูกค้าด้วยตนเอง`,
+            title: "Se requiere un reembolso manual",
+            message: `No se pudo reembolsar el pedido ${order.order_no}${order.st_company_name ? ` de la tienda ${order.st_company_name}` : ""} mediante Omise. Debe transferir el reembolso al cliente manualmente.`,
             action_url: getStoreOrderActionUrl(order),
             ref_type: "ORDER",
             ref_id: order.or_id,
@@ -406,7 +394,7 @@ function buildPaymentExpiresAt(): Date {
 }
 
 // ดึงรายการสินค้าใน order หลายรายการ แล้วจัดกลุ่มตาม or_id
-async function getOrderItems(orIds: number[], lg_code = "th"): Promise<Map<number, OrderItemDTO[]>> {
+async function getOrderItems(orIds: number[], lg_code = "es"): Promise<Map<number, OrderItemDTO[]>> {
     const itemMap = new Map<number, OrderItemDTO[]>();
     if (!orIds.length) return itemMap;
 
@@ -478,40 +466,29 @@ async function createShipmentGroupsForOrders(conn: PoolConnection, orderIds: num
             st.st_email,
             loc.loc_address,
             loc.zip_code AS loc_zip_code,
-            sender_prov.name_in_thai AS sender_province_name,
-            sender_dist.name_in_thai AS sender_district_name,
-            sender_subdist.name_in_thai AS sender_subdistrict_name,
+            loc.state AS sender_province_name,
+            COALESCE(loc.municipality, loc.city) AS sender_district_name,
+            loc.colonia AS sender_subdistrict_name,
             o.shipping_name AS recipient_name,
             o.shipping_phone AS recipient_phone,
             o.shipping_address AS recipient_address,
             lb.zip_code AS recipient_zip_code,
-            recipient_prov.name_in_thai AS recipient_province_name,
-            recipient_dist.name_in_thai AS recipient_district_name,
-            recipient_subdist.name_in_thai AS recipient_subdistrict_name,
+            lb.state AS recipient_province_name,
+            COALESCE(lb.municipality, lb.city) AS recipient_district_name,
+            lb.colonia AS recipient_subdistrict_name,
             SUM(oir.qty_reserved) AS total_qty
          FROM Order_inventory_reservations oir
          INNER JOIN Inventorys inv ON inv.inv_id = oir.inv_id
          INNER JOIN Orders o ON o.or_id = oir.or_id
          LEFT JOIN Store st ON st.st_id = o.st_id
-         LEFT JOIN Locations loc ON loc.loc_id = inv.loc_id
-         LEFT JOIN Provinces sender_prov ON sender_prov.id = loc.Provinces_id
-         LEFT JOIN Districts sender_dist ON sender_dist.id = loc.Districts_id
-         LEFT JOIN Subdistricts sender_subdist ON sender_subdist.id = loc.Subdistricts_id
-         LEFT JOIN Locations_buyer lb
+         LEFT JOIN Locations loc ON loc.loc_id = inv.loc_id         LEFT JOIN Locations_buyer lb
             ON lb.u_id = o.u_id
            AND lb.locb_recipient_name = o.shipping_name
            AND lb.locb_phone = o.shipping_phone
-           AND lb.locb_address = o.shipping_address
-         LEFT JOIN Provinces recipient_prov ON recipient_prov.id = lb.provinces_id
-         LEFT JOIN Districts recipient_dist ON recipient_dist.id = lb.districts_id
-         LEFT JOIN Subdistricts recipient_subdist ON recipient_subdist.id = lb.subdistricts_id
-         WHERE oir.or_id IN (?)
+           AND lb.locb_address = o.shipping_address         WHERE oir.or_id IN (?)
          GROUP BY
             o.or_id, o.order_no, o.st_id, inv.loc_id, st.st_company_name, st.st_phone, st.st_email,
-            loc.loc_address, loc.zip_code, sender_prov.name_in_thai, sender_dist.name_in_thai,
-            sender_subdist.name_in_thai, o.shipping_name, o.shipping_phone, o.shipping_address,
-            lb.zip_code, recipient_prov.name_in_thai, recipient_dist.name_in_thai,
-            recipient_subdist.name_in_thai
+            loc.loc_address, loc.zip_code, loc.state, loc.municipality, loc.city, loc.colonia, o.shipping_name, o.shipping_phone, o.shipping_address, lb.zip_code, lb.state, lb.municipality, lb.city, lb.colonia
          ORDER BY o.or_id ASC, inv.loc_id ASC`,
         [orderIds]
     );
@@ -983,7 +960,7 @@ async function getCheckoutCartItems(
         INNER JOIN ProductVariants pv ON pv.pv_id = ci.pv_id
         INNER JOIN Products p ON p.p_id = pv.p_id
         LEFT JOIN Store st ON st.st_id = p.st_id
-        LEFT JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = 'th'
+        LEFT JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = 'es'
         LEFT JOIN VariantOptionItems voi ON voi.pv_id = pv.pv_id
         LEFT JOIN ProductOptionItems poi ON poi.poi_id = voi.poi_id
         LEFT JOIN ProductOptions po ON po.potn_id = poi.potn_id
@@ -1027,14 +1004,10 @@ async function getCheckoutAddress(conn: PoolConnection, uId: number, locbId: num
             lb.locb_phone,
             lb.locb_address,
             lb.zip_code,
-            p.name_in_thai AS province_name,
-            d.name_in_thai AS district_name,
-            s.name_in_thai AS subdistrict_name
-         FROM Locations_buyer lb
-         LEFT JOIN Provinces p ON p.id = lb.provinces_id
-         LEFT JOIN Districts d ON d.id = lb.districts_id
-         LEFT JOIN Subdistricts s ON s.id = lb.subdistricts_id
-         WHERE lb.locb_id = ? AND lb.u_id = ?
+            lb.state AS province_name,
+            COALESCE(lb.municipality, lb.city) AS district_name,
+            lb.colonia AS subdistrict_name
+         FROM Locations_buyer lb         WHERE lb.locb_id = ? AND lb.u_id = ?
          LIMIT 1`,
         [locbId, uId]
     );
@@ -1124,15 +1097,11 @@ async function buildCheckoutShippingQuoteGroups(
                 inv.reserved_qty,
                 loc.loc_address AS origin_address,
                 loc.zip_code AS origin_postcode,
-                prov.name_in_thai AS origin_province_name,
-                dist.name_in_thai AS origin_district_name,
-                subdist.name_in_thai AS origin_subdistrict_name
+                loc.state AS origin_province_name,
+                COALESCE(loc.municipality, loc.city) AS origin_district_name,
+                loc.colonia AS origin_subdistrict_name
              FROM Inventorys inv
-             LEFT JOIN Locations loc ON loc.loc_id = inv.loc_id
-             LEFT JOIN Provinces prov ON prov.id = loc.Provinces_id
-             LEFT JOIN Districts dist ON dist.id = loc.Districts_id
-             LEFT JOIN Subdistricts subdist ON subdist.id = loc.Subdistricts_id
-             WHERE inv.pv_id = ?
+             LEFT JOIN Locations loc ON loc.loc_id = inv.loc_id             WHERE inv.pv_id = ?
              ORDER BY inv.inv_id ASC`,
             [item.pv_id]
         );
@@ -1419,12 +1388,12 @@ export async function createOrder(input: CreateOrderInput): Promise<OrderDetailD
         for (const orId of createdOrderIds) {
             const [orderRows] = await conn.query<(RowDataPacket & OrderDTO)[]>(
                 `${orderSelectSql} WHERE o.or_id = ?`,
-                ["th", orId]
+                ["es", orId]
             );
 
             const [itemRows] = await conn.query<(RowDataPacket & OrderItemDTO)[]>(
                 `${orderItemsSelectSql} WHERE oi.or_id = ? ORDER BY oi.oi_id ASC`,
-                ["th", orId]
+                ["es", orId]
             );
 
             orders.push({ ...orderRows[0]!, items: itemRows, shipments: shipmentMap.get(orId) ?? [] });
@@ -1435,8 +1404,8 @@ export async function createOrder(input: CreateOrderInput): Promise<OrderDetailD
             order,
             actor: "buyer",
             targets: ["STORE"],
-            title: "มีคำสั่งซื้อใหม่",
-            message: `คำสั่งซื้อ ${order.order_no} รอชำระเงิน ยอด ${Number(order.grand_total).toLocaleString("th-TH")} บาท`,
+            title: "Nuevo pedido",
+            message: `El pedido ${order.order_no} está pendiente de pago por un total de ${Number(order.grand_total).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}.`,
             priority: "HIGH",
         })));
 
@@ -1615,12 +1584,12 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
         for (const orId of createdOrderIds) {
             const [finalOrderRows] = await conn.query<(RowDataPacket & OrderDTO)[]>(
                 `${orderSelectSql} WHERE o.or_id = ?`,
-                ["th", orId]
+                ["es", orId]
             );
 
             const [itemRows] = await conn.query<(RowDataPacket & OrderItemDTO)[]>(
                 `${orderItemsSelectSql} WHERE oi.or_id = ? ORDER BY oi.oi_id ASC`,
-                ["th", orId]
+                ["es", orId]
             );
 
             orders.push({ ...finalOrderRows[0]!, items: itemRows, shipments: shipmentMap.get(orId) ?? [] });
@@ -1633,10 +1602,10 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
                 order,
                 actor: "buyer",
                 targets: ["STORE"],
-                title: isPaid ? "ชำระเงินสำเร็จ" : "มีคำสั่งซื้อใหม่",
+                title: isPaid ? "Pago completado" : "Nuevo pedido",
                 message: isPaid
-                    ? `คำสั่งซื้อ ${order.order_no} ชำระเงินแล้ว ยอด ${Number(order.grand_total).toLocaleString("th-TH")} บาท`
-                    : `คำสั่งซื้อ ${order.order_no} รอชำระเงิน ยอด ${Number(order.grand_total).toLocaleString("th-TH")} บาท`,
+                    ? `El pedido ${order.order_no} ha sido pagado por un total de ${Number(order.grand_total).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}.`
+                    : `El pedido ${order.order_no} está pendiente de pago por un total de ${Number(order.grand_total).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}.`,
                 priority: isPaid ? "HIGH" : "NORMAL",
             } satisfies OrderNotificationOptions;
         }));
@@ -1651,7 +1620,7 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
 }
 
 // ดึงรายการ order ของ buyer พร้อม items และ shipment events สำหรับหน้า "การซื้อของฉัน"
-export async function getOrders(u_id: number, lg_code = "th"): Promise<(OrderDTO & { item_count: number; items: OrderItemDTO[] })[]> {
+export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO & { item_count: number; items: OrderItemDTO[] })[]> {
     await ensureOrderShipmentLabelColumn();
 
     const [rows] = await pool.query<(RowDataPacket & OrderDTO & { item_count: number })[]>(
@@ -1679,9 +1648,14 @@ export async function getOrders(u_id: number, lg_code = "th"): Promise<(OrderDTO
             o.grand_total, o.coupon_code,
             o.shipping_name, o.shipping_phone, o.shipping_address,
             lb.zip_code AS shipping_zip_code,
-            prov.name_in_thai AS shipping_province_name,
-            dist.name_in_thai AS shipping_district_name,
-            subdist.name_in_thai AS shipping_subdistrict_name,
+            lb.country_code AS shipping_country_code,
+            lb.state AS shipping_state,
+            lb.city AS shipping_city,
+            lb.municipality AS shipping_municipality,
+            lb.colonia AS shipping_colonia,
+            lb.state AS shipping_province_name,
+            COALESCE(lb.municipality, lb.city) AS shipping_district_name,
+            lb.colonia AS shipping_subdistrict_name,
             o.remark, o.payment_expires_at, o.created_at, o.update_at,
             COUNT(oi.oi_id) AS item_count
         FROM Orders o
@@ -1693,11 +1667,7 @@ export async function getOrders(u_id: number, lg_code = "th"): Promise<(OrderDTO
             ON lb.u_id = o.u_id
            AND lb.locb_recipient_name = o.shipping_name
            AND lb.locb_phone = o.shipping_phone
-           AND lb.locb_address = o.shipping_address
-        LEFT JOIN Provinces prov ON prov.id = lb.provinces_id
-        LEFT JOIN Districts dist ON dist.id = lb.districts_id
-        LEFT JOIN Subdistricts subdist ON subdist.id = lb.subdistricts_id
-        LEFT JOIN (
+           AND lb.locb_address = o.shipping_address        LEFT JOIN (
             SELECT r1.or_id, r1.refund_id, r1.amount, r1.status, r1.remark, r1.return_tracking, r1.updated_at
             FROM Refunds r1
             INNER JOIN (
@@ -1741,7 +1711,7 @@ export async function getOrders(u_id: number, lg_code = "th"): Promise<(OrderDTO
 }
 
 // ดึงรายการ order ฝั่งร้าน/backoffice ตามร้านที่ login อยู่
-export async function adminGetOrders(st_id: number, lg_code = "th"): Promise<AdminOrderDTO[]> {
+export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<AdminOrderDTO[]> {
     await ensureOrderShipmentLabelColumn();
     await ensureRefundMethodColumn();
 
@@ -1777,9 +1747,14 @@ export async function adminGetOrders(st_id: number, lg_code = "th"): Promise<Adm
             o.grand_total, o.coupon_code,
             o.shipping_name, o.shipping_phone, o.shipping_address,
             lb.zip_code AS shipping_zip_code,
-            prov.name_in_thai AS shipping_province_name,
-            dist.name_in_thai AS shipping_district_name,
-            subdist.name_in_thai AS shipping_subdistrict_name,
+            lb.country_code AS shipping_country_code,
+            lb.state AS shipping_state,
+            lb.city AS shipping_city,
+            lb.municipality AS shipping_municipality,
+            lb.colonia AS shipping_colonia,
+            lb.state AS shipping_province_name,
+            COALESCE(lb.municipality, lb.city) AS shipping_district_name,
+            lb.colonia AS shipping_subdistrict_name,
             o.remark, o.payment_expires_at, o.created_at, o.update_at,
             COUNT(oi.oi_id) AS item_count
         FROM Orders o
@@ -1801,11 +1776,7 @@ export async function adminGetOrders(st_id: number, lg_code = "th"): Promise<Adm
             ON lb.u_id = o.u_id
            AND lb.locb_recipient_name = o.shipping_name
            AND lb.locb_phone = o.shipping_phone
-           AND lb.locb_address = o.shipping_address
-        LEFT JOIN Provinces prov ON prov.id = lb.provinces_id
-        LEFT JOIN Districts dist ON dist.id = lb.districts_id
-        LEFT JOIN Subdistricts subdist ON subdist.id = lb.subdistricts_id
-        LEFT JOIN Order_items oi ON oi.or_id = o.or_id
+           AND lb.locb_address = o.shipping_address        LEFT JOIN Order_items oi ON oi.or_id = o.or_id
         ${storeSql}
         GROUP BY o.or_id
         ORDER BY o.created_at DESC`,
@@ -1857,7 +1828,7 @@ export async function adminGetSalesReport(
 ): Promise<AdminSalesReportDTO> {
     await ensureOrderShipmentTables();
 
-    const params: (number | string)[] = [filters.lg_code ?? "th"];
+    const params: (number | string)[] = [filters.lg_code ?? "es"];
     const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
     if (storeSql) params.push(st_id);
 
@@ -1993,7 +1964,7 @@ export async function adminGetSalesByProductReport(
 ): Promise<AdminSalesByProductReportDTO> {
     await ensureOrderShipmentTables();
 
-    const params: (number | string)[] = [filters.lg_code ?? "th"];
+    const params: (number | string)[] = [filters.lg_code ?? "es"];
     const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
     if (storeSql) params.push(st_id);
 
@@ -2111,7 +2082,7 @@ export async function adminGetSalesByCategoryReport(
 ): Promise<AdminSalesByCategoryReportDTO> {
     await ensureOrderShipmentTables();
 
-    const params: (number | string)[] = [filters.lg_code ?? "th"];
+    const params: (number | string)[] = [filters.lg_code ?? "es"];
     const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
     if (storeSql) params.push(st_id);
 
@@ -2358,545 +2329,8 @@ export async function adminGetSalesByBuyerReport(
     return { summary, rows: normalizedRows };
 }
 
-// รายงานยอดขายแยกตามร้าน/vendor สำหรับมุมมอง admin รวมทุกร้าน
-export async function adminGetSalesByVendorReport(
-    st_id: number,
-    filters: { start_date?: string; end_date?: string } = {}
-): Promise<AdminSalesByVendorReportDTO> {
-    await ensureOrderShipmentTables();
-
-    const params: (number | string)[] = [];
-    const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
-    if (storeSql) params.push(st_id);
-
-    const dateSql: string[] = [];
-    if (filters.start_date) {
-        dateSql.push("DATE(o.update_at) >= ?");
-        params.push(filters.start_date);
-    }
-    if (filters.end_date) {
-        dateSql.push("DATE(o.update_at) <= ?");
-        params.push(filters.end_date);
-    }
-
-    const [rows] = await pool.query<(RowDataPacket & AdminSalesByVendorRowDTO)[]>(
-        `SELECT
-            o.st_id,
-            st.st_number,
-            st.st_company_name,
-            COUNT(DISTINCT o.or_id) AS order_count,
-            COUNT(DISTINCT o.u_id) AS buyer_count,
-            SUM(COALESCE(item_summary.item_count, 0)) AS item_count,
-            SUM(COALESCE(item_summary.item_gross_total, o.subtotal) + COALESCE(o.shipping_fee, 0)) AS gross_sales,
-            SUM(COALESCE(o.discount_total, 0) + COALESCE(item_summary.item_discount_total, 0)) AS discount_total,
-            SUM(COALESCE(refund.refund_total, 0)) AS refund_total,
-            SUM(GREATEST(o.grand_total - COALESCE(refund.refund_total, 0), 0)) AS net_sales,
-            CASE
-                WHEN COUNT(DISTINCT o.or_id) > 0
-                THEN SUM(GREATEST(o.grand_total - COALESCE(refund.refund_total, 0), 0)) / COUNT(DISTINCT o.or_id)
-                ELSE 0
-            END AS average_order_value,
-            MAX(o.update_at) AS latest_sale_date
-        FROM Orders o
-        LEFT JOIN Store st ON st.st_id = o.st_id
-        LEFT JOIN Status os ON os.s_id = o.s_id
-        LEFT JOIN (
-            SELECT
-                or_id,
-                COUNT(oi_id) AS item_count,
-                SUM(unit_price * qty) AS item_gross_total,
-                SUM(discount_amount * qty) AS item_discount_total
-            FROM Order_items
-            GROUP BY or_id
-        ) item_summary ON item_summary.or_id = o.or_id
-        LEFT JOIN (
-            SELECT
-                po.or_id,
-                MAX(p.paid_at) AS paid_at
-            FROM Payment_orders po
-            INNER JOIN Payments p ON p.pay_id = po.pay_id
-            WHERE p.payment_status = 'paid'
-            GROUP BY po.or_id
-        ) pay ON pay.or_id = o.or_id
-        LEFT JOIN (
-            SELECT
-                or_id,
-                MAX(occurred_at) AS delivered_at
-            FROM Order_shipment_events
-            WHERE status = 'POD'
-               OR LOWER(COALESCE(description, '')) LIKE '%delivery successfully%'
-            GROUP BY or_id
-        ) delivered_event ON delivered_event.or_id = o.or_id
-        LEFT JOIN (
-            SELECT or_id, SUM(amount) AS refund_total
-            FROM Refunds
-            WHERE status = 'succeeded'
-            GROUP BY or_id
-        ) refund ON refund.or_id = o.or_id
-        WHERE os.s_code IN ('RECEIVED', 'AUTO_RECEIVED', 'REVIEWED')
-            ${storeSql}
-            ${dateSql.length ? `AND ${dateSql.join(" AND ")}` : ""}
-        GROUP BY o.st_id, st.st_number, st.st_company_name
-        ORDER BY net_sales DESC, latest_sale_date DESC`,
-        params
-    );
-
-    const normalizedRows = rows.map((row) => ({
-        ...row,
-        st_id: Number(row.st_id ?? 0),
-        order_count: Number(row.order_count ?? 0),
-        buyer_count: Number(row.buyer_count ?? 0),
-        item_count: Number(row.item_count ?? 0),
-        gross_sales: Number(row.gross_sales ?? 0),
-        discount_total: Number(row.discount_total ?? 0),
-        refund_total: Number(row.refund_total ?? 0),
-        net_sales: Number(row.net_sales ?? 0),
-        average_order_value: Number(row.average_order_value ?? 0),
-    }));
-
-    const summary = normalizedRows.reduce(
-        (total, row) => {
-            total.vendor_count += 1;
-            total.order_count += row.order_count;
-            total.item_count += row.item_count;
-            total.gross_sales += row.gross_sales;
-            total.discount_total += row.discount_total;
-            total.refund_total += row.refund_total;
-            total.net_sales += row.net_sales;
-            return total;
-        },
-        {
-            vendor_count: 0,
-            order_count: 0,
-            buyer_count: 0,
-            item_count: 0,
-            gross_sales: 0,
-            discount_total: 0,
-            refund_total: 0,
-            net_sales: 0,
-            average_per_vendor: 0,
-        }
-    );
-
-    summary.buyer_count = normalizedRows.reduce((total, row) => total + row.buyer_count, 0);
-    summary.average_per_vendor = summary.vendor_count > 0 ? summary.net_sales / summary.vendor_count : 0;
-
-    return { summary, rows: normalizedRows };
-}
-
-// ดึงค่าตั้งค่ารอบจ่ายเงินให้ร้าน เช่น จำนวนวันหลังรับสินค้า
-export async function adminGetPayoutSetting(): Promise<AdminPayoutSettingDTO> {
-    await ensurePayoutSettingsTable();
-
-    const [rows] = await pool.query<(RowDataPacket & AdminPayoutSettingDTO)[]>(
-        "SELECT payout_cycle_days, updated_at FROM Payout_settings WHERE ps_id = 1 LIMIT 1"
-    );
-
-    return {
-        payout_cycle_days: Number(rows[0]?.payout_cycle_days ?? 7),
-        updated_at: rows[0]?.updated_at ?? null,
-    };
-}
-
-// อัปเดตจำนวนวันรอบ payout ที่ใช้คำนวณรายการครบกำหนดจ่าย
-export async function adminUpdatePayoutSetting(payout_cycle_days: number): Promise<AdminPayoutSettingDTO> {
-    await ensurePayoutSettingsTable();
-    const days = normalizePayoutCycleDays(payout_cycle_days);
-
-    await pool.query(
-        `INSERT INTO Payout_settings (ps_id, payout_cycle_days, updated_at)
-         VALUES (1, ?, NOW())
-         ON DUPLICATE KEY UPDATE payout_cycle_days = VALUES(payout_cycle_days), updated_at = NOW()`,
-        [days]
-    );
-
-    return adminGetPayoutSetting();
-}
-
-// สร้าง Omise transfer ให้ร้านจาก order ที่ครบเงื่อนไข payout และยังไม่เคยโอน
-export async function adminExecuteTransfer(st_id: number): Promise<AdminTransferResultDTO> {
-    await Promise.all([
-        ensureOrderShipmentTables(),
-        ensurePayoutHistoryTable(),
-        ensurePayoutOrdersTable(),
-        ensureStorePayoutEnabledColumn(),
-    ]);
-
-    const [[storeRow]] = await pool.query<(RowDataPacket & { st_company_name: string | null; omise_recipient_id: string | null; payout_enabled: number; payout_cycle_days: number })[]>(
-        `SELECT st.st_company_name, st.omise_recipient_id, COALESCE(st.payout_enabled, 1) AS payout_enabled,
-                COALESCE(ps.payout_cycle_days, 7) AS payout_cycle_days
-         FROM Store st
-         LEFT JOIN Payout_settings ps ON ps.ps_id = 1
-         WHERE st.st_id = ? LIMIT 1`,
-        [st_id]
-    );
-    if (!storeRow) throw new ApiError(404, "ไม่พบข้อมูลร้านค้า");
-    if (!storeRow.omise_recipient_id) throw new ApiError(400, "ร้านค้านี้ยังไม่มี Omise Recipient ID");
-    if (!storeRow.payout_enabled) throw new ApiError(400, "ร้านค้านี้ถูกปิดการจ่ายเงินไว้");
-
-    // ดึง orders ที่ครบกำหนดจ่ายและยังไม่เคย payout
-    const [dueOrders] = await pool.query<(RowDataPacket & { or_id: number; net_amount_satang: number })[]>(
-        `SELECT o.or_id,
-                ROUND(GREATEST(o.grand_total - COALESCE(refund.refund_total, 0), 0) * 100) AS net_amount_satang
-         FROM Orders o
-         LEFT JOIN Status os ON os.s_id = o.s_id
-         LEFT JOIN (
-             SELECT
-                 or_id,
-                 MAX(occurred_at) AS delivered_at
-             FROM Order_shipment_events
-             WHERE status = 'POD'
-                OR LOWER(COALESCE(description, '')) LIKE '%delivery successfully%'
-             GROUP BY or_id
-         ) delivered_event ON delivered_event.or_id = o.or_id
-         LEFT JOIN (
-             SELECT or_id, SUM(amount) AS refund_total
-             FROM Refunds WHERE status = 'succeeded'
-             GROUP BY or_id
-         ) refund ON refund.or_id = o.or_id
-         WHERE o.st_id = ?
-           AND os.s_code IN ('RECEIVED', 'AUTO_RECEIVED', 'REVIEWED')
-           AND DATE_ADD(DATE(o.update_at), INTERVAL ? DAY) <= CURDATE()
-           AND o.or_id NOT IN (SELECT or_id FROM Payout_orders)`,
-        [st_id, storeRow.payout_cycle_days]
-    );
-
-    if (dueOrders.length === 0) throw new ApiError(400, "ไม่มียอดที่ครบกำหนดจ่าย หรือทุก order ถูก payout ไปแล้ว");
-
-    const totalSatang = dueOrders.reduce((sum, row) => sum + Number(row.net_amount_satang), 0);
-    if (totalSatang < 100) throw new ApiError(400, "ยอดรวมน้อยกว่า 1 บาท ไม่สามารถโอนได้");
-
-    const omiseBody = new URLSearchParams();
-    omiseBody.set("amount", String(Math.trunc(totalSatang)));
-    omiseBody.set("recipient", storeRow.omise_recipient_id);
-
-    const transfer = await omiseRequest<{ id: string; amount: number; currency: string }>(
-        "/transfers",
-        { method: "POST", body: omiseBody as unknown as BodyInit }
-    );
-
-    const conn = await pool.getConnection();
-    try {
-        await conn.beginTransaction();
-
-        const [historyResult] = await conn.query<ResultSetHeader>(
-            `INSERT INTO Payout_history (st_id, st_company_name, omise_transfer_id, omise_recipient_id, amount, currency)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [st_id, storeRow.st_company_name, transfer.id, storeRow.omise_recipient_id, Math.trunc(totalSatang), transfer.currency ?? "THB"]
-        );
-        const ph_id = historyResult.insertId;
-
-        await conn.query(
-            `INSERT INTO Payout_orders (ph_id, or_id, net_amount) VALUES ?`,
-            [dueOrders.map((o) => [ph_id, o.or_id, Math.trunc(o.net_amount_satang)])]
-        );
-
-        await conn.commit();
-    } catch (err) {
-        await conn.rollback();
-        throw err;
-    } finally {
-        conn.release();
-    }
-
-    try {
-        getIO().emit("payout:transfer_status_changed", {
-            omise_transfer_id: transfer.id,
-            status: "pending",
-        });
-    } catch {
-        // socket optional
-    }
-
-    return {
-        st_id,
-        st_company_name: storeRow.st_company_name,
-        omise_transfer_id: transfer.id,
-        amount: transfer.amount,
-        currency: transfer.currency ?? "THB",
-    };
-}
-
-// สรุป badge payout เช่น จำนวนร้านที่มียอดครบกำหนดและจำนวน transfer ตามสถานะ
-export async function adminGetPayoutBadgeSummary(): Promise<import("./type.js").AdminPayoutBadgeSummaryDTO> {
-    await Promise.all([ensureOrderShipmentTables(), ensurePayoutHistoryTable(), ensurePayoutOrdersTable(), ensureStorePayoutEnabledColumn()]);
-    const setting = await adminGetPayoutSetting();
-
-    const [[dueRow]] = await pool.query<(RowDataPacket & { due_count: number })[]>(
-        `SELECT COUNT(DISTINCT o.st_id) AS due_count
-         FROM Orders o
-         INNER JOIN Status os ON os.s_id = o.s_id AND os.s_code IN ('RECEIVED', 'AUTO_RECEIVED', 'REVIEWED')
-         LEFT JOIN (
-             SELECT
-                 or_id,
-                 MAX(occurred_at) AS delivered_at
-             FROM Order_shipment_events
-             WHERE status = 'POD'
-                OR LOWER(COALESCE(description, '')) LIKE '%delivery successfully%'
-             GROUP BY or_id
-         ) delivered_event ON delivered_event.or_id = o.or_id
-         WHERE DATE_ADD(DATE(o.update_at), INTERVAL ? DAY) <= CURDATE()
-           AND o.or_id NOT IN (SELECT or_id FROM Payout_orders)`,
-        [setting.payout_cycle_days]
-    );
-
-    const [statusRows] = await pool.query<(RowDataPacket & { status: string; cnt: number })[]>(
-        `SELECT status, COUNT(*) AS cnt FROM Payout_history GROUP BY status`
-    );
-    const statusMap: Record<string, number> = {};
-    for (const r of statusRows) statusMap[r.status] = Number(r.cnt);
-
-    return {
-        due_stores: Number(dueRow?.due_count ?? 0),
-        pending_transfers: statusMap["pending"] ?? 0,
-        sent_transfers: statusMap["sent"] ?? 0,
-        paid_transfers: statusMap["paid"] ?? 0,
-        failed_transfers: statusMap["failed"] ?? 0,
-    };
-}
-
-// เปิดหรือปิดการจ่ายเงินให้ร้านรายร้าน
-export async function adminToggleStorePayout(st_id: number, enabled: boolean): Promise<AdminToggleStorePayoutDTO> {
-    await ensureStorePayoutEnabledColumn();
-
-    const [result] = await pool.query<ResultSetHeader>(
-        "UPDATE Store SET payout_enabled = ? WHERE st_id = ?",
-        [enabled ? 1 : 0, st_id]
-    );
-    if (result.affectedRows === 0) throw new ApiError(404, "ไม่พบข้อมูลร้านค้า");
-
-    return { st_id, payout_enabled: enabled };
-}
-
-// ดึงประวัติ payout พร้อม filter ร้าน สถานะ วันที่ และ pagination
-export async function adminGetPayoutHistory(filters: {
-    st_id?: number;
-    status?: string;
-    start_date?: string;
-    end_date?: string;
-    page?: number;
-    page_size?: number;
-} = {}): Promise<AdminPayoutHistoryDTO> {
-    await ensurePayoutHistoryTable();
-
-    const page = Math.max(1, filters.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, filters.page_size ?? 20));
-    const offset = (page - 1) * pageSize;
-
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
-
-    if (filters.st_id) { conditions.push("st_id = ?"); params.push(filters.st_id); }
-    if (filters.status) { conditions.push("status = ?"); params.push(filters.status); }
-    if (filters.start_date) { conditions.push("DATE(created_at) >= ?"); params.push(filters.start_date); }
-    if (filters.end_date) { conditions.push("DATE(created_at) <= ?"); params.push(filters.end_date); }
-
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    const [[countRow]] = await pool.query<(RowDataPacket & { total: number })[]>(
-        `SELECT COUNT(*) AS total FROM Payout_history ${where}`,
-        params
-    );
-    const total = Number(countRow?.total ?? 0);
-
-    const [rows] = await pool.query<(RowDataPacket & AdminPayoutHistoryRowDTO)[]>(
-        `SELECT ph_id, st_id, st_company_name, omise_transfer_id, omise_recipient_id,
-                amount, currency, status, created_at, updated_at
-         FROM Payout_history ${where}
-         ORDER BY created_at DESC
-         LIMIT ? OFFSET ?`,
-        [...params, pageSize, offset]
-    );
-
-    return { rows, total, page, page_size: pageSize };
-}
-
-// ดึง transfer ล่าสุดของแต่ละร้านเพื่อแสดงสถานะ payout ปัจจุบัน
-export async function adminGetLatestTransferPerStore(): Promise<Record<number, AdminPayoutHistoryRowDTO>> {
-    await ensurePayoutHistoryTable();
-
-    const [rows] = await pool.query<(RowDataPacket & AdminPayoutHistoryRowDTO)[]>(
-        `SELECT ph.ph_id, ph.st_id, ph.st_company_name, ph.omise_transfer_id,
-                ph.omise_recipient_id, ph.amount, ph.currency, ph.status,
-                ph.created_at, ph.updated_at
-         FROM Payout_history ph
-         INNER JOIN (
-             SELECT st_id, MAX(ph_id) AS max_id FROM Payout_history GROUP BY st_id
-         ) latest ON latest.st_id = ph.st_id AND latest.max_id = ph.ph_id`
-    );
-
-    return Object.fromEntries(rows.map((row) => [row.st_id, row]));
-}
-
-// อัปเดตสถานะ transfer จาก webhook/Omise และ emit ให้หน้า dashboard refresh
-export async function updatePayoutTransferStatus(omise_transfer_id: string, status: string): Promise<void> {
-    await ensurePayoutHistoryTable();
-    const [result] = await pool.query<ResultSetHeader>(
-        "UPDATE Payout_history SET status = ?, updated_at = NOW() WHERE omise_transfer_id = ?",
-        [status, omise_transfer_id]
-    );
-
-    if (result.affectedRows > 0) {
-        try {
-            getIO().emit("payout:transfer_status_changed", {
-                omise_transfer_id,
-                status,
-            });
-        } catch (error) {
-            console.warn("[payout] emit transfer status changed failed:", error);
-        }
-    }
-}
-
-// รายงาน order ที่รอ payout หรือครบกำหนด payout ตามรอบจ่ายเงิน
-export async function adminGetPendingPayoutReport(
-    st_id: number,
-    filters: { start_date?: string; end_date?: string } = {}
-): Promise<AdminPendingPayoutReportDTO> {
-    await Promise.all([ensureOrderShipmentTables(), ensureStorePayoutEnabledColumn(), ensurePayoutOrdersTable()]);
-    const setting = await adminGetPayoutSetting();
-    const params: (number | string)[] = [setting.payout_cycle_days];
-    const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
-    if (storeSql) params.push(st_id);
-
-    const dateSql: string[] = [];
-    if (filters.start_date) {
-        dateSql.push("DATE(o.update_at) >= ?");
-        params.push(filters.start_date);
-    }
-    if (filters.end_date) {
-        dateSql.push("DATE(o.update_at) <= ?");
-        params.push(filters.end_date);
-    }
-
-    const [rows] = await pool.query<(RowDataPacket & AdminPendingPayoutRowDTO)[]>(
-        `SELECT
-            sale.st_id,
-            sale.st_number,
-            sale.st_company_name,
-            sale.omise_recipient_id,
-            sale.payout_enabled,
-            sale.bk_name,
-            sale.bank_account_number,
-            COUNT(DISTINCT sale.or_id) AS order_count,
-            COUNT(DISTINCT sale.u_id) AS buyer_count,
-            SUM(sale.item_count) AS item_count,
-            SUM(sale.gross_sales) AS gross_sales,
-            SUM(sale.discount_total) AS discount_total,
-            SUM(sale.refund_total) AS refund_total,
-            SUM(sale.net_sales) AS pending_payout,
-            SUM(CASE WHEN sale.payout_date <= CURDATE() THEN sale.net_sales ELSE 0 END) AS due_payout,
-            SUM(CASE WHEN sale.payout_date > CURDATE() THEN sale.net_sales ELSE 0 END) AS future_payout,
-            MIN(sale.sale_date) AS earliest_sale_date,
-            MAX(sale.sale_date) AS latest_sale_date,
-            COALESCE(
-                MIN(CASE WHEN sale.payout_date > CURDATE() THEN sale.payout_date ELSE NULL END),
-                MAX(sale.payout_date)
-            ) AS next_payout_date
-        FROM (
-            SELECT
-                o.or_id,
-                o.u_id,
-                o.st_id,
-                st.st_number,
-                st.st_company_name,
-                st.omise_recipient_id,
-                COALESCE(st.payout_enabled, 1) AS payout_enabled,
-                b.bk_name,
-                st.bank_account_number,
-                DATE(o.update_at) AS sale_date,
-                DATE_ADD(DATE(o.update_at), INTERVAL ? DAY) AS payout_date,
-                COALESCE(item_summary.item_count, 0) AS item_count,
-                COALESCE(item_summary.item_gross_total, o.subtotal) + COALESCE(o.shipping_fee, 0) AS gross_sales,
-                COALESCE(o.discount_total, 0) + COALESCE(item_summary.item_discount_total, 0) AS discount_total,
-                COALESCE(refund.refund_total, 0) AS refund_total,
-                GREATEST(o.grand_total - COALESCE(refund.refund_total, 0), 0) AS net_sales
-            FROM Orders o
-            LEFT JOIN Store st ON st.st_id = o.st_id
-            LEFT JOIN Bank b ON b.bk_id = st.bk_id
-            LEFT JOIN Status os ON os.s_id = o.s_id
-            LEFT JOIN (
-                SELECT
-                    or_id,
-                    COUNT(oi_id) AS item_count,
-                    SUM(unit_price * qty) AS item_gross_total,
-                    SUM(discount_amount * qty) AS item_discount_total
-                FROM Order_items
-                GROUP BY or_id
-            ) item_summary ON item_summary.or_id = o.or_id
-            LEFT JOIN (
-                SELECT
-                    or_id,
-                    MAX(occurred_at) AS delivered_at
-                FROM Order_shipment_events
-                WHERE status = 'POD'
-                   OR LOWER(COALESCE(description, '')) LIKE '%delivery successfully%'
-                GROUP BY or_id
-            ) delivered_event ON delivered_event.or_id = o.or_id
-            LEFT JOIN (
-                SELECT or_id, SUM(amount) AS refund_total
-                FROM Refunds
-                WHERE status = 'succeeded'
-                GROUP BY or_id
-            ) refund ON refund.or_id = o.or_id
-            WHERE os.s_code IN ('RECEIVED', 'AUTO_RECEIVED', 'REVIEWED')
-                AND o.or_id NOT IN (SELECT or_id FROM Payout_orders)
-                ${storeSql}
-                ${dateSql.length ? `AND ${dateSql.join(" AND ")}` : ""}
-        ) sale
-        GROUP BY sale.st_id, sale.st_number, sale.st_company_name, sale.omise_recipient_id, sale.payout_enabled, sale.bk_name, sale.bank_account_number
-        HAVING pending_payout > 0
-        ORDER BY due_payout DESC, pending_payout DESC, next_payout_date ASC`,
-        params
-    );
-
-    const normalizedRows = rows.map((row) => ({
-        ...row,
-        st_id: Number(row.st_id ?? 0),
-        order_count: Number(row.order_count ?? 0),
-        buyer_count: Number(row.buyer_count ?? 0),
-        item_count: Number(row.item_count ?? 0),
-        gross_sales: Number(row.gross_sales ?? 0),
-        discount_total: Number(row.discount_total ?? 0),
-        refund_total: Number(row.refund_total ?? 0),
-        pending_payout: Number(row.pending_payout ?? 0),
-        due_payout: Number(row.due_payout ?? 0),
-        future_payout: Number(row.future_payout ?? 0),
-    }));
-
-    const summary = normalizedRows.reduce(
-        (total, row) => {
-            total.vendor_count += 1;
-            total.order_count += row.order_count;
-            total.buyer_count += row.buyer_count;
-            total.item_count += row.item_count;
-            total.gross_sales += row.gross_sales;
-            total.discount_total += row.discount_total;
-            total.refund_total += row.refund_total;
-            total.pending_payout += row.pending_payout;
-            total.due_payout += row.due_payout;
-            total.future_payout += row.future_payout;
-            return total;
-        },
-        {
-            vendor_count: 0,
-            order_count: 0,
-            buyer_count: 0,
-            item_count: 0,
-            gross_sales: 0,
-            discount_total: 0,
-            refund_total: 0,
-            pending_payout: 0,
-            due_payout: 0,
-            future_payout: 0,
-        }
-    );
-
-    return { setting, summary, rows: normalizedRows };
-}
-
 // ดึงรายละเอียด order ฝั่งร้าน รวม items, shipment และรูปหลักฐานคืนเงิน
-export async function adminGetOrderById(or_id: number, st_id: number, lg_code = "th"): Promise<AdminOrderDetailDTO | null> {
+export async function adminGetOrderById(or_id: number, st_id: number, lg_code = "es"): Promise<AdminOrderDetailDTO | null> {
     await ensureOrderShipmentLabelColumn();
     await ensureOrderShipmentTables();
     await ensureRefundMethodColumn();
@@ -2932,9 +2366,14 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
             o.grand_total, o.coupon_code,
             o.shipping_name, o.shipping_phone, o.shipping_address,
             lb.zip_code AS shipping_zip_code,
-            prov.name_in_thai AS shipping_province_name,
-            dist.name_in_thai AS shipping_district_name,
-            subdist.name_in_thai AS shipping_subdistrict_name,
+            lb.country_code AS shipping_country_code,
+            lb.state AS shipping_state,
+            lb.city AS shipping_city,
+            lb.municipality AS shipping_municipality,
+            lb.colonia AS shipping_colonia,
+            lb.state AS shipping_province_name,
+            COALESCE(lb.municipality, lb.city) AS shipping_district_name,
+            lb.colonia AS shipping_subdistrict_name,
             o.remark, o.payment_expires_at, o.created_at, o.update_at,
             COUNT(oi.oi_id) AS item_count
         FROM Orders o
@@ -2956,11 +2395,7 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
             ON lb.u_id = o.u_id
            AND lb.locb_recipient_name = o.shipping_name
            AND lb.locb_phone = o.shipping_phone
-           AND lb.locb_address = o.shipping_address
-        LEFT JOIN Provinces prov ON prov.id = lb.provinces_id
-        LEFT JOIN Districts dist ON dist.id = lb.districts_id
-        LEFT JOIN Subdistricts subdist ON subdist.id = lb.subdistricts_id
-        LEFT JOIN Order_items oi ON oi.or_id = o.or_id
+           AND lb.locb_address = o.shipping_address        LEFT JOIN Order_items oi ON oi.or_id = o.or_id
         WHERE o.or_id = ?
         ${storeSql}
         GROUP BY o.or_id
@@ -3013,7 +2448,7 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
 }
 
 // ดึงรายละเอียด order ของ buyer รายเดียว พร้อม items และ shipment timeline
-export async function getOrderById(or_id: number, u_id: number, lg_code = "th"): Promise<OrderDetailDTO | null> {
+export async function getOrderById(or_id: number, u_id: number, lg_code = "es"): Promise<OrderDetailDTO | null> {
     await ensureOrderShipmentLabelColumn();
     await ensureOrderShipmentTables();
 
@@ -3053,7 +2488,7 @@ export async function getOrderById(or_id: number, u_id: number, lg_code = "th"):
 }
 
 // buyer ยืนยันรับสินค้าเอง เปลี่ยนสถานะจาก DELIVERED เป็น RECEIVED
-export async function confirmOrderReceived(or_id: number, u_id: number, lg_code = "th"): Promise<OrderDetailDTO> {
+export async function confirmOrderReceived(or_id: number, u_id: number, lg_code = "es"): Promise<OrderDetailDTO> {
     await ensureOrderShipmentLabelColumn();
 
     const conn = await pool.getConnection();
@@ -3097,8 +2532,8 @@ export async function confirmOrderReceived(or_id: number, u_id: number, lg_code 
             order: receivedOrder,
             actor: "buyer",
             targets: ["STORE"],
-            title: "ลูกค้ายืนยันรับสินค้าแล้ว",
-            message: `คำสั่งซื้อ ${receivedOrder.order_no} ได้รับการยืนยันรับสินค้าแล้ว`,
+            title: "El cliente confirmó la recepción",
+            message: `El cliente confirmó la recepción del pedido ${receivedOrder.order_no}.`,
             priority: "HIGH",
         });
 
@@ -3112,7 +2547,7 @@ export async function confirmOrderReceived(or_id: number, u_id: number, lg_code 
 }
 
 // buyer ยกเลิก order ที่ยังรอชำระ พร้อมคืน stock reserve และคืน usage คูปอง
-export async function cancelOrder(or_id: number, u_id: number, reason: string, lg_code = "th"): Promise<OrderDetailDTO> {
+export async function cancelOrder(or_id: number, u_id: number, reason: string, lg_code = "es"): Promise<OrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureOrderShipmentLabelColumn();
 
@@ -3150,8 +2585,8 @@ export async function cancelOrder(or_id: number, u_id: number, reason: string, l
             order: cancelledOrder,
             actor: "buyer",
             targets: ["STORE"],
-            title: "ลูกค้ายกเลิกคำสั่งซื้อ",
-            message: `คำสั่งซื้อ ${cancelledOrder.order_no} ถูกยกเลิก เหตุผล: ${reason}`,
+            title: "El cliente canceló el pedido",
+            message: `El pedido ${cancelledOrder.order_no} fue cancelado. Motivo: ${reason}`,
             priority: "HIGH",
         });
 
@@ -3306,7 +2741,7 @@ export type RefundItemSelection = { oi_id: number; qty: number };
 
 // buyer ส่งคำขอคืนเงิน/คืนสินค้า พร้อมเหตุผล tracking คืน และรูปหลักฐาน
 // selectedItems: รายการ {oi_id, qty} ที่ต้องการคืน (เฉพาะตอนสถานะ DELIVERED เท่านั้นที่เลือกได้บางรายการ/บางจำนวน — สถานะอื่นถือเป็นการยกเลิกทั้งออเดอร์เหมือนเดิม)
-export async function requestRefund(or_id: number, u_id: number, reason: string, lg_code = "th", returnTracking = "", imageFiles: Express.Multer.File[] = [], selectedItems: RefundItemSelection[] = []): Promise<OrderDetailDTO> {
+export async function requestRefund(or_id: number, u_id: number, reason: string, lg_code = "es", returnTracking = "", imageFiles: Express.Multer.File[] = [], selectedItems: RefundItemSelection[] = []): Promise<OrderDetailDTO> {
     await ensureRefundImagesTable();
     await ensureRefundReturnTrackingColumn();
     await ensureOrderShipmentLabelColumn();
@@ -3465,8 +2900,8 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
             order: updatedOrder,
             actor: "buyer",
             targets: ["STORE"],
-            title: "มีคำขอคืนสินค้า/คืนเงิน",
-            message: `ลูกค้าขอคืนสินค้าคำสั่งซื้อ ${updatedOrder.order_no} เหตุผล: ${reason}`,
+            title: "Nueva solicitud de devolución o reembolso",
+            message: `El cliente solicitó la devolución del pedido ${updatedOrder.order_no}. Motivo: ${reason}`,
             priority: "URGENT",
         });
 
@@ -3494,7 +2929,7 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
 }
 
 // admin อนุมัติคำขอคืนเงินและพยายาม refund ผ่าน Omise อัตโนมัติ
-export async function approveRefundRequest(or_id: number, st_id: number, note = "", lg_code = "th"): Promise<AdminOrderDetailDTO> {
+export async function approveRefundRequest(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
 
@@ -3575,8 +3010,8 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
                 order,
                 actor: "admin",
                 targets: ["USER"],
-                title: "กำลังดำเนินการคืนเงิน",
-                message: `คำสั่งซื้อ ${order.order_no} ต้องดำเนินการโอนคืนด้วยตนเอง ร้านค้าจะติดต่อประสานงานเพิ่มเติม`,
+                title: "Reembolso en proceso",
+                message: `El reembolso del pedido ${order.order_no} debe procesarse manualmente. La tienda se pondrá en contacto para coordinarlo.`,
                 priority: "HIGH",
             });
             await notifyPlatformManualRefundNeeded(order);
@@ -3615,8 +3050,8 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
             order,
             actor: "admin",
             targets: ["USER"],
-            title: "อนุมัติคืนเงินแล้ว",
-            message: `คำสั่งซื้อ ${order.order_no} ได้รับการอนุมัติคืนเงินแล้ว`,
+            title: "Reembolso aprobado",
+            message: `Se aprobó el reembolso del pedido ${order.order_no}.`,
             priority: "HIGH",
         });
 
@@ -3633,7 +3068,7 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
 // PENDING: ยังไม่มีการชำระเงินจริง แค่ยกเลิกและปล่อย stock ที่จองไว้กลับคืน
 // CONFIRMED: ชำระเงินแล้ว ต้องคืนเงินให้ลูกค้าผ่าน Omise อัตโนมัติด้วย
 // ถ้า Omise คืนเงินอัตโนมัติไม่ได้ จะปิดออเดอร์เป็นยกเลิกไว้ก่อน แล้วให้ admin กดยืนยันโอนคืนเองภายหลัง
-export async function adminCancelOrder(or_id: number, st_id: number, note = "", lg_code = "th"): Promise<AdminOrderDetailDTO> {
+export async function adminCancelOrder(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
 
@@ -3680,8 +3115,8 @@ export async function adminCancelOrder(or_id: number, st_id: number, note = "", 
                 order: updated,
                 actor: "admin",
                 targets: ["USER"],
-                title: "ยกเลิกคำสั่งซื้อ",
-                message: `คำสั่งซื้อ ${updated.order_no} ถูกยกเลิกโดยร้านค้า`,
+                title: "Pedido cancelado",
+                message: `El pedido ${updated.order_no} fue cancelado por la tienda.`,
                 priority: "HIGH",
             });
 
@@ -3779,10 +3214,10 @@ export async function adminCancelOrder(or_id: number, st_id: number, note = "", 
             order: updated,
             actor: "admin",
             targets: ["USER"],
-            title: "ยกเลิกคำสั่งซื้อและคืนเงิน",
+            title: "Pedido cancelado y reembolsado",
             message: refundSucceeded
-                ? `คำสั่งซื้อ ${updated.order_no} ถูกยกเลิกโดยร้านค้าและคืนเงินเรียบร้อยแล้ว`
-                : `คำสั่งซื้อ ${updated.order_no} ถูกยกเลิกโดยร้านค้า ทีมงานจะดำเนินการโอนเงินคืนให้ท่านด้วยตนเอง`,
+                ? `El pedido ${updated.order_no} fue cancelado por la tienda y el reembolso se completó correctamente.`
+                : `El pedido ${updated.order_no} fue cancelado por la tienda. El equipo realizará el reembolso manualmente.`,
             priority: "HIGH",
         });
         if (!refundSucceeded) await notifyPlatformManualRefundNeeded(updated);
@@ -3802,7 +3237,7 @@ export async function adminUpdateOrderStatus(
     st_id: number,
     statusCode: OrderStatusCode,
     note = "",
-    lg_code = "th"
+    lg_code = "es"
 ): Promise<AdminOrderDetailDTO> {
     await ensureOrderShipmentLabelColumn();
 
@@ -3869,8 +3304,8 @@ export async function adminUpdateOrderStatus(
             order: updated,
             actor: "admin",
             targets: ["USER"],
-            title: "อัปเดตสถานะคำสั่งซื้อ",
-            message: `คำสั่งซื้อ ${updated.order_no} เปลี่ยนสถานะเป็น ${getOrderStatusLabel(updated)}`,
+            title: "Estado del pedido actualizado",
+            message: `El pedido ${updated.order_no} cambió al estado: ${getOrderStatusLabel(updated)}.`,
             priority: statusCode === "READY_TO_SHIP" ? "HIGH" : "NORMAL",
         });
 
@@ -3956,18 +3391,18 @@ async function createShipmentForOrder(
             o.shipping_phone,
             o.shipping_address,
             lb.zip_code AS shipping_zip_code,
-            prov.name_in_thai AS shipping_province_name,
-            dist.name_in_thai AS shipping_district_name,
-            subdist.name_in_thai AS shipping_subdistrict_name,
+            lb.state AS shipping_province_name,
+            COALESCE(lb.municipality, lb.city) AS shipping_district_name,
+            lb.colonia AS shipping_subdistrict_name,
             o.grand_total,
             COUNT(oi.oi_id) AS item_count,
             COALESCE(sc.shippop_courier_code, sc.sc_code) AS shipping_carrier_code,
             o.tracking_no,
             loc.loc_address AS sender_address,
             loc.zip_code AS sender_zip_code,
-            sender_prov.name_in_thai AS sender_province_name,
-            sender_dist.name_in_thai AS sender_district_name,
-            sender_subdist.name_in_thai AS sender_subdistrict_name
+            loc.state AS sender_province_name,
+            COALESCE(loc.municipality, loc.city) AS sender_district_name,
+            loc.colonia AS sender_subdistrict_name
          FROM Orders o
          LEFT JOIN Store st ON st.st_id = o.st_id
          LEFT JOIN Status os ON os.s_id = o.s_id
@@ -3977,15 +3412,7 @@ async function createShipmentForOrder(
             ON lb.u_id = o.u_id
            AND lb.locb_recipient_name = o.shipping_name
            AND lb.locb_phone = o.shipping_phone
-           AND lb.locb_address = o.shipping_address
-         LEFT JOIN Provinces prov ON prov.id = lb.provinces_id
-         LEFT JOIN Districts dist ON dist.id = lb.districts_id
-         LEFT JOIN Subdistricts subdist ON subdist.id = lb.subdistricts_id
-         LEFT JOIN Locations loc ON loc.st_id = o.st_id AND loc.is_default = 1
-         LEFT JOIN Provinces sender_prov ON sender_prov.id = loc.Provinces_id
-         LEFT JOIN Districts sender_dist ON sender_dist.id = loc.Districts_id
-         LEFT JOIN Subdistricts sender_subdist ON sender_subdist.id = loc.Subdistricts_id
-         WHERE o.or_id = ?
+           AND lb.locb_address = o.shipping_address         LEFT JOIN Locations loc ON loc.st_id = o.st_id AND loc.is_default = 1         WHERE o.or_id = ?
            ${storeSql}
          GROUP BY o.or_id
          LIMIT 1
@@ -4219,7 +3646,7 @@ export async function adminUpdateOrderTracking(
     or_id: number,
     st_id: number,
     trackingNoInput: string,
-    lg_code = "th"
+    lg_code = "es"
 ): Promise<AdminOrderDetailDTO> {
     await ensureOrderShipmentTables();
 
@@ -4291,8 +3718,8 @@ export async function adminUpdateOrderTracking(
             order: updated,
             actor: "admin",
             targets: ["USER"],
-            title: "อัปเดตเลขพัสดุ",
-            message: `คำสั่งซื้อ ${updated.order_no} มีเลขพัสดุ ${updated.tracking_no ?? trackingNo}`,
+            title: "Número de seguimiento actualizado",
+            message: `El pedido ${updated.order_no} tiene el número de seguimiento ${updated.tracking_no ?? trackingNo}.`,
             priority: "HIGH",
         });
 
@@ -4309,7 +3736,7 @@ export async function adminUpdateOrderTracking(
 export async function adminCreateOrderShipment(
     or_id: number,
     st_id: number,
-    lg_code = "th"
+    lg_code = "es"
 ): Promise<AdminOrderDetailDTO> {
     await ensureOrderShipmentLabelColumn();
     await ensureOrderShipmentTables();
@@ -4371,8 +3798,8 @@ export async function adminCreateOrderShipment(
             order: updated,
             actor: "admin",
             targets: ["USER"],
-            title: "คำสั่งซื้อพร้อมจัดส่ง",
-            message: `คำสั่งซื้อ ${updated.order_no} พร้อมจัดส่งแล้ว${updated.tracking_no ? ` เลขพัสดุ ${updated.tracking_no}` : ""}`,
+            title: "Pedido listo para enviar",
+            message: `El pedido ${updated.order_no} está listo para enviarse${updated.tracking_no ? `. Número de seguimiento: ${updated.tracking_no}` : ""}.`,
             priority: "HIGH",
         });
 
@@ -4389,7 +3816,7 @@ export async function adminCreateOrderShipment(
 export async function adminDevMarkOrderDelivered(
     or_id: number,
     st_id: number,
-    lg_code = "th"
+    lg_code = "es"
 ): Promise<AdminOrderDetailDTO> {
     if (!allowDevShipmentActions()) {
         throw new ApiError(403, "Dev shipment actions are disabled");
@@ -4523,8 +3950,8 @@ export async function adminDevMarkOrderDelivered(
             order: updated,
             actor: "admin",
             targets: ["USER"],
-            title: "จำลองจัดส่งสำเร็จ",
-            message: `คำสั่งซื้อ ${updated.order_no} ถูกจำลองเป็นจัดส่งสำเร็จสำหรับทดสอบระบบ`,
+            title: "Entrega simulada completada",
+            message: `El pedido ${updated.order_no} se marcó como entregado mediante una simulación para probar el sistema.`,
             priority: "NORMAL",
         });
 
@@ -4538,7 +3965,7 @@ export async function adminDevMarkOrderDelivered(
 }
 
 // admin ปฏิเสธคำขอคืนเงิน/คืนสินค้า พร้อมบันทึกเหตุผลและแจ้ง buyer
-export async function rejectRefundRequest(or_id: number, st_id: number, note: string, lg_code = "th"): Promise<AdminOrderDetailDTO> {
+export async function rejectRefundRequest(or_id: number, st_id: number, note: string, lg_code = "es"): Promise<AdminOrderDetailDTO> {
     if (note.trim().length < 3) throw new ApiError(400, "กรุณาระบุเหตุผลในการปฏิเสธคำขอคืนเงิน");
 
     const conn = await pool.getConnection();
@@ -4588,8 +4015,8 @@ export async function rejectRefundRequest(or_id: number, st_id: number, note: st
             order,
             actor: "admin",
             targets: ["USER"],
-            title: "คำขอคืนเงินไม่ผ่านการอนุมัติ",
-            message: `คำขอคืนเงินคำสั่งซื้อ ${order.order_no} ไม่ผ่านการอนุมัติ เหตุผล: ${note.trim()}`,
+            title: "Solicitud de reembolso rechazada",
+            message: `La solicitud de reembolso del pedido ${order.order_no} fue rechazada. Motivo: ${note.trim()}`,
             priority: "HIGH",
         });
 
@@ -4603,7 +4030,7 @@ export async function rejectRefundRequest(or_id: number, st_id: number, note: st
 }
 
 // admin ยืนยันรับสินค้าคืน แล้วดำเนินการคืนเงินหรือบันทึกว่าให้โอนคืนเอง
-export async function confirmReturnReceived(or_id: number, st_id: number, note = "", lg_code = "th"): Promise<AdminOrderDetailDTO> {
+export async function confirmReturnReceived(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
 
@@ -4688,8 +4115,8 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
                 order,
                 actor: "admin",
                 targets: ["USER"],
-                title: "ได้รับสินค้าคืนแล้ว",
-                message: `ร้านค้าได้รับสินค้าคืนสำหรับคำสั่งซื้อ ${order.order_no} แล้ว และจะดำเนินการโอนเงินคืนด้วยตนเอง`,
+                title: "Producto devuelto recibido",
+                message: `La tienda recibió el producto devuelto del pedido ${order.order_no} y realizará el reembolso manualmente.`,
                 priority: "HIGH",
             });
             await notifyPlatformManualRefundNeeded(order);
@@ -4735,8 +4162,8 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
             order,
             actor: "admin",
             targets: ["USER"],
-            title: "คืนสินค้า/คืนเงินสำเร็จ",
-            message: `คำสั่งซื้อ ${order.order_no} รับสินค้าคืนและคืนเงินเรียบร้อยแล้ว`,
+            title: "Devolución y reembolso completados",
+            message: `La devolución y el reembolso del pedido ${order.order_no} se completaron correctamente.`,
             priority: "HIGH",
         });
 
@@ -4750,7 +4177,7 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
 }
 
 // admin ยืนยันว่าโอนเงินคืนแบบ manual เรียบร้อยแล้ว
-export async function confirmManualRefundRequest(or_id: number, st_id: number, note = "", lg_code = "th"): Promise<AdminOrderDetailDTO> {
+export async function confirmManualRefundRequest(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
 
@@ -4846,8 +4273,8 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
             order,
             actor: "admin",
             targets: ["USER"],
-            title: "ยืนยันโอนคืนลูกค้าแล้ว",
-            message: `คำสั่งซื้อ ${order.order_no} ได้รับการยืนยันว่าโอนเงินคืนลูกค้าแล้ว`,
+            title: "Reembolso al cliente confirmado",
+            message: `Se confirmó que el reembolso del pedido ${order.order_no} fue transferido al cliente.`,
             priority: "HIGH",
         });
 
@@ -4901,13 +4328,13 @@ export async function expirePendingPaymentOrders(limit = 50): Promise<number> {
             order: {
                 ...order,
                 status_code: "CANCELLED",
-                status_label: statusLabelByCode.CANCELLED ?? "ยกเลิก",
+                status_label: statusLabelByCode.CANCELLED ?? "Cancelado",
                 status: toLegacyOrderStatus("CANCELLED"),
             },
             actor: "system",
             targets: ["STORE", "USER"],
-            title: "คำสั่งซื้อหมดเวลาชำระเงิน",
-            message: `คำสั่งซื้อ ${order.order_no} ถูกยกเลิกอัตโนมัติเนื่องจากหมดเวลาชำระเงิน`,
+            title: "Tiempo de pago agotado",
+            message: `El pedido ${order.order_no} se canceló automáticamente porque venció el plazo de pago.`,
             priority: "NORMAL",
         })));
 
@@ -4980,8 +4407,8 @@ export async function autoReceiveDeliveredOrders(days = 14, limit = 100): Promis
             },
             actor: "system",
             targets: ["USER", "STORE"],
-            title: "ระบบยืนยันรับสินค้าอัตโนมัติ",
-            message: `คำสั่งซื้อ ${order.order_no} ครบกำหนดตรวจสอบสินค้า ${days} วันแล้ว ระบบจึงยืนยันรับสินค้าให้อัตโนมัติ`,
+            title: "Recepción confirmada automáticamente",
+            message: `El plazo de revisión de ${days} días para el pedido ${order.order_no} finalizó, por lo que el sistema confirmó la recepción automáticamente.`,
             priority: "NORMAL",
         })));
 

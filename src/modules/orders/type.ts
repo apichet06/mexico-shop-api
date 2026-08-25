@@ -159,6 +159,11 @@ export type OrderDTO = {
     shipping_phone: string;
     shipping_address: string;
     shipping_zip_code?: string | null;
+    shipping_country_code?: string | null;
+    shipping_state?: string | null;
+    shipping_city?: string | null;
+    shipping_municipality?: string | null;
+    shipping_colonia?: string | null;
     shipping_province_name?: string | null;
     shipping_district_name?: string | null;
     shipping_subdistrict_name?: string | null;
@@ -309,125 +314,6 @@ export type AdminSalesByBuyerSummaryDTO = {
 export type AdminSalesByBuyerReportDTO = {
     summary: AdminSalesByBuyerSummaryDTO;
     rows: AdminSalesByBuyerRowDTO[];
-};
-
-export type AdminSalesByVendorRowDTO = {
-    st_id: number;
-    st_number: string | null;
-    st_company_name: string | null;
-    order_count: number;
-    buyer_count: number;
-    item_count: number;
-    gross_sales: number;
-    discount_total: number;
-    refund_total: number;
-    net_sales: number;
-    average_order_value: number;
-    latest_sale_date: string | null;
-};
-
-export type AdminSalesByVendorSummaryDTO = {
-    vendor_count: number;
-    order_count: number;
-    buyer_count: number;
-    item_count: number;
-    gross_sales: number;
-    discount_total: number;
-    refund_total: number;
-    net_sales: number;
-    average_per_vendor: number;
-};
-
-export type AdminSalesByVendorReportDTO = {
-    summary: AdminSalesByVendorSummaryDTO;
-    rows: AdminSalesByVendorRowDTO[];
-};
-
-export type AdminPayoutSettingDTO = {
-    payout_cycle_days: number;
-    updated_at: string | null;
-};
-
-export type AdminPendingPayoutRowDTO = {
-    st_id: number;
-    st_number: string | null;
-    st_company_name: string | null;
-    omise_recipient_id: string | null;
-    payout_enabled: number;
-    bk_name: string | null;
-    bank_account_number: string | null;
-    order_count: number;
-    buyer_count: number;
-    item_count: number;
-    gross_sales: number;
-    discount_total: number;
-    refund_total: number;
-    pending_payout: number;
-    due_payout: number;
-    future_payout: number;
-    earliest_sale_date: string | null;
-    latest_sale_date: string | null;
-    next_payout_date: string | null;
-};
-
-export type AdminTransferResultDTO = {
-    st_id: number;
-    st_company_name: string | null;
-    omise_transfer_id: string;
-    amount: number;
-    currency: string;
-};
-
-export type AdminToggleStorePayoutDTO = {
-    st_id: number;
-    payout_enabled: boolean;
-};
-
-export type AdminPayoutHistoryRowDTO = {
-    ph_id: number;
-    st_id: number;
-    st_company_name: string | null;
-    omise_transfer_id: string;
-    omise_recipient_id: string;
-    amount: number;
-    currency: string;
-    status: string;
-    created_at: string;
-    updated_at: string;
-};
-
-export type AdminPayoutHistoryDTO = {
-    rows: AdminPayoutHistoryRowDTO[];
-    total: number;
-    page: number;
-    page_size: number;
-};
-
-export type AdminPendingPayoutSummaryDTO = {
-    vendor_count: number;
-    order_count: number;
-    buyer_count: number;
-    item_count: number;
-    gross_sales: number;
-    discount_total: number;
-    refund_total: number;
-    pending_payout: number;
-    due_payout: number;
-    future_payout: number;
-};
-
-export type AdminPendingPayoutReportDTO = {
-    setting: AdminPayoutSettingDTO;
-    summary: AdminPendingPayoutSummaryDTO;
-    rows: AdminPendingPayoutRowDTO[];
-};
-
-export type AdminPayoutBadgeSummaryDTO = {
-    due_stores: number;
-    pending_transfers: number;
-    sent_transfers: number;
-    paid_transfers: number;
-    failed_transfers: number;
 };
 
 export type OrderDetailDTO = OrderDTO & {

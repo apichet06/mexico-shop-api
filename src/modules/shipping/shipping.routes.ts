@@ -14,10 +14,6 @@ shippingRouter.put("/carriers/:sc_id", Auth, ctrl.updateCarrier);
 shippingRouter.patch("/carriers/:sc_id/toggle", Auth, ctrl.toggleCarrier);
 shippingRouter.delete("/carriers/:sc_id", Auth, ctrl.deleteCarrier);
 
-// ─── Store carrier subset (seller self-service) ────────────────────────────────
-shippingRouter.get("/store-carriers", Auth, ctrl.getMyStoreCarriers);
-shippingRouter.put("/store-carriers", Auth, ctrl.updateMyStoreCarriers);
-
 // ─── Rates ────────────────────────────────────────────────────────────────────
 shippingRouter.get("/rates", Auth, ctrl.listRates);
 shippingRouter.post("/rates", Auth, ctrl.createRate);

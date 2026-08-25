@@ -30,6 +30,22 @@ function isActiveEmployee(value: unknown): boolean {
     return value === true || value === 1 || value === "1";
 }
 
+function normalizeUsername(value: unknown): string {
+    const username = String(value ?? "").trim();
+    if (!/^[A-Za-z0-9._-]{3,30}$/.test(username)) {
+        throw new ApiError(400, "ชื่อผู้ใช้ต้องมี 3-30 ตัว และใช้ได้เฉพาะตัวอักษร ตัวเลข จุด ขีดล่าง หรือขีดกลาง");
+    }
+    return username;
+}
+
+function normalizePhone(value: unknown): string {
+    const phone = String(value ?? "").replace(/\D/g, "");
+    if (phone.length !== 10) {
+        throw new ApiError(400, "กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 ตัว");
+    }
+    return phone;
+}
+
 export const list = asyncHandler(async (_req, res) => {
     const { st_id } = _req.params;
     const data = await emp.listEmps(Number(st_id));
@@ -39,16 +55,17 @@ export const list = asyncHandler(async (_req, res) => {
 
 export const login = asyncHandler(async (req, res) => {
 
-    const { email, password } = req.body;
-    const employee = await emp.findByEmpLogin(email);
+    const username = String(req.body?.username ?? "").trim();
+    const password = String(req.body?.password ?? "");
+    if (!username || !password) {
+        throw new ApiError(400, "กรุณาระบุชื่อผู้ใช้และรหัสผ่าน");
+    }
+    const employee = await emp.findByEmpLogin(username);
     if (!employee) {
         return res.status(404).json({ message: CommonMessages.notFound });
     }
     if (!employee.e_isActive) {
         return res.status(403).json({ message: AuthMessages.resign });
-    }
-    if (!employee.e_email_verified_at) {
-        return res.status(403).json({ message: AuthMessages.emailNotVerified });
     }
     const isMatch = await bcrypt.compare(password, employee.e_password);
     if (!isMatch) {
@@ -61,7 +78,7 @@ export const login = asyncHandler(async (req, res) => {
 
     const token = jwt.sign({
         empId: employee.e_id,
-        empEmail: employee.e_email,
+        empUsername: employee.e_usercode,
         empStatus: employee.e_status,
         empFirstname: employee.e_firstname,
         storeId: employee.st_id,
@@ -130,73 +147,46 @@ export const resetPassword = asyncHandler(async (req, res) => {
 
 
 export const createFullAdmin = asyncHandler(async (req, res) => {
-    const { e_firstname, e_lastname, e_email, e_phone, e_isActive, e_add_name, e_status, st_id } = req.body;
-    const temporaryPasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
-    const employee = { e_firstname, e_lastname, e_password: temporaryPasswordHash, e_email: String(e_email ?? "").trim().toLowerCase(), e_phone, e_isActive: "1", e_add_name, e_status, st_id };
-    const employeeId = await emp.CreateEmpAdmins(employee);
-
-    const token = crypto.randomBytes(32).toString("hex");
-    const invite = await emp.createEmployeeEmailVerificationInvite({
-        e_id: employeeId,
-        tokenHash: hashResetToken(token),
-        requiresPasswordSetup: true,
-        requestIp: req.ip ?? null,
-        userAgent: req.get("user-agent") ?? null,
-    });
-    const verifyUrl = buildBackofficeUrl(`/employee-email-confirmation?token=${encodeURIComponent(token)}`);
-    if (verifyUrl) {
-        await sendEmployeeEmailVerificationEmail({
-            email: invite.email,
-            name: invite.name,
-            storeName: invite.storeName,
-            role: invite.role,
-            verifyUrl,
-            expiresAt: invite.expiresAt,
-        });
-    } else {
-        console.warn("[employee-email-verification] skipped email: BACKOFFICE_URL is missing");
+    const { e_firstname, e_lastname, e_add_name, e_status, st_id } = req.body;
+    const e_phone = normalizePhone(req.body?.e_phone);
+    const e_usercode = normalizeUsername(req.body?.e_usercode);
+    const password = String(req.body?.e_password ?? "");
+    if (password.length < 8) {
+        throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
     }
+    const e_password = await bcrypt.hash(password, 10);
+    const created = await emp.CreateEmpAdmins({ e_usercode, e_firstname, e_lastname, e_password, e_phone, e_isActive: "1", e_add_name, e_status, st_id });
 
-    res.status(201).json({ message: CommonMessages.insertSuccess, verification_email: invite.email });
+    res.status(201).json({ message: CommonMessages.insertSuccess, data: { e_id: created.employeeId, e_usercode: created.username } });
 
 })
 
 export const updatefullAdmin = asyncHandler(async (req, res) => {
     const { e_id } = req.params;
-    const { e_firstname, e_lastname, e_email, e_phone, e_isActive, e_upd_name, e_status, st_id } = req.body;
-    const current = await emp.findByEmpId(Number(e_id));
-    const normalizedEmail = String(e_email ?? "").trim().toLowerCase();
-    const emailChanged = Boolean(current && normalizedEmail && normalizedEmail !== current.e_email.trim().toLowerCase());
-    const employee = { e_firstname, e_lastname, e_email: normalizedEmail, e_phone, e_isActive, e_upd_name, e_status, st_id };
-    await emp.UpdateEmpAdmins(Number(e_id), employee);
-
-    let verificationEmail: string | null = null;
-    if (emailChanged) {
-        const token = crypto.randomBytes(32).toString("hex");
-        const invite = await emp.createEmployeeEmailVerificationInvite({
-            e_id: Number(e_id),
-            tokenHash: hashResetToken(token),
-            requiresPasswordSetup: !current?.e_email_verified_at,
-            requestIp: req.ip ?? null,
-            userAgent: req.get("user-agent") ?? null,
-        });
-        const verifyUrl = buildBackofficeUrl(`/employee-email-confirmation?token=${encodeURIComponent(token)}`);
-        if (verifyUrl) {
-            await sendEmployeeEmailVerificationEmail({
-                email: invite.email,
-                name: invite.name,
-                storeName: invite.storeName,
-                role: invite.role,
-                verifyUrl,
-                expiresAt: invite.expiresAt,
-            });
-            verificationEmail = invite.email;
-        } else {
-            console.warn("[employee-email-verification] skipped email: BACKOFFICE_URL is missing");
-        }
+    const { e_firstname, e_lastname, e_isActive, e_upd_name, e_status, st_id } = req.body;
+    const e_phone = normalizePhone(req.body?.e_phone);
+    const employeeId = Number(e_id);
+    const e_usercode = normalizeUsername(req.body?.e_usercode);
+    if (await emp.isEmployeeUsernameTaken(e_usercode, employeeId)) {
+        throw new ApiError(409, "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
     }
-
-    res.status(200).json({ message: CommonMessages.updateSuccess, verification_email: verificationEmail });
+    const password = String(req.body?.e_password ?? "");
+    if (password && password.length < 8) {
+        throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+    }
+    const employee = {
+        e_usercode,
+        e_firstname,
+        e_lastname,
+        e_phone,
+        e_isActive,
+        e_upd_name,
+        e_status,
+        st_id,
+        ...(password ? { e_password: await bcrypt.hash(password, 10) } : {}),
+    };
+    await emp.UpdateEmpAdmins(employeeId, employee);
+    res.status(200).json({ message: CommonMessages.updateSuccess });
 
 })
 
@@ -308,7 +298,7 @@ export const deleteFullAdmin = asyncHandler(async (req, res) => {
 
 export const create = asyncHandler(async (req, res) => {
     const { e_firstname, e_lastname, e_password, e_email, e_phone, e_isActive, e_add_name, e_isAccept, e_status, st_id } = req.body;
-    const { st_company_name, _company_name, st_idcard, bank_name, account_number, omise_recipient_id, st_email, created_at, st_phone } = req.body;
+    const { st_company_name, _company_name, st_idcard, bank_name, account_number, st_email, created_at, st_phone } = req.body;
     const { loc_name, loc_address, loc_postcode, Subdistricts_id, Districts_id, Provinces_id } = req.body;
     const empId = Number(req.empId);
     const files = req.files as { [key: string]: Express.Multer.File[] };
@@ -326,7 +316,7 @@ export const create = asyncHandler(async (req, res) => {
     }
 
     const employee = { e_firstname, e_lastname, e_password, e_email, e_phone, e_isActive, e_add_name, e_isAccept, e_status, st_id };
-    const store = { st_company_name, _company_name, st_idcard, bank_name, account_number, omise_recipient_id, st_email, created_at, st_phone, st_image, e_id: empId };
+    const store = { st_company_name, _company_name, st_idcard, bank_name, account_number, st_email, created_at, st_phone, st_image, e_id: empId };
     const location = { loc_name, loc_address, loc_postcode, Subdistricts_id, Districts_id, Provinces_id };
 
 

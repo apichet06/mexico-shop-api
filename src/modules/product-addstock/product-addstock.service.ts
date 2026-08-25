@@ -12,7 +12,8 @@ export async function list(st_id: number, log_code: string): Promise<StockProduc
                         d.on_hand, 
                         d.reserved_qty,
                         d.loc_id,
-                        g.name_in_thai as province,
+                        f.state,
+                        f.country_code,
                         f.loc_name,
                         d.inv_id ,
                         (SELECT GROUP_CONCAT(g.poi_value ORDER BY f.poi_id SEPARATOR '/')
@@ -28,10 +29,9 @@ export async function list(st_id: number, log_code: string): Promise<StockProduc
             ON c.p_id = a.p_id 
             INNER JOIN Inventorys d ON c.pv_id = d.pv_id
             INNER JOIN Locations f ON f.loc_id = d.loc_id
-            INNER JOIN Provinces g ON f.Provinces_id = g.id
             INNER JOIN Units h ON h.u_id = c.unit_id
             INNER JOIN UnitLangs j ON j.u_id = h.u_id
-            WHERE b.lg_code = ? and a.st_id = ? and j.lg_code = ? and f.st_id = ?
+            WHERE b.lg_code = ? and a.st_id = ? and j.lg_code = ? and f.st_id = ? and f.country_code = 'MX'
             order by a.p_id desc`, [log_code, st_id, log_code, st_id]);
 
 
@@ -161,16 +161,16 @@ export async function ListInventoryMovement(st_id: number, log_code: string): Pr
                         b.pv_sku,
                         pl.p_name,
                         l.loc_name,
-                        pr.name_in_thai AS province
+                        l.state,
+                        l.country_code
                     FROM InventoryLog a
                     INNER JOIN ProductVariants b ON a.pv_id = b.pv_id
                     INNER JOIN Products p ON p.p_id = b.p_id
                     INNER JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = ?
                     INNER JOIN Inventorys i ON i.inv_id = a.inv_id
                     INNER JOIN Locations l ON l.loc_id = i.loc_id
-                    INNER JOIN Provinces pr ON pr.id = l.Provinces_id
                     INNER JOIN Employees c ON c.e_id = a.e_id
-                    WHERE a.st_id = ?
+                    WHERE a.st_id = ? AND l.country_code = 'MX'
                     ORDER BY a.create_at DESC`, [log_code, st_id]);
 
     return rows;
@@ -192,7 +192,8 @@ export async function ListInactiveStock(st_id: number, log_code: string, days: n
                         inv.on_hand,
                         inv.reserved_qty,
                         l.loc_name,
-                        pr.name_in_thai AS province,
+                        l.state,
+                        l.country_code,
                         sales.last_sold_at,
                         COALESCE(sales.sold_qty, 0) AS sold_qty,
                         CASE
@@ -209,7 +210,6 @@ export async function ListInactiveStock(st_id: number, log_code: string, days: n
                     INNER JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = ?
                     LEFT JOIN Inventorys inv ON inv.pv_id = pv.pv_id
                     LEFT JOIN Locations l ON l.loc_id = inv.loc_id AND l.st_id = p.st_id
-                    LEFT JOIN Provinces pr ON pr.id = l.Provinces_id
                     LEFT JOIN (
                         SELECT
                             oi.pv_id,
@@ -222,6 +222,7 @@ export async function ListInactiveStock(st_id: number, log_code: string, days: n
                         GROUP BY oi.pv_id
                     ) sales ON sales.pv_id = pv.pv_id
                     WHERE p.st_id = ?
+                      AND l.country_code = 'MX'
                       AND (sales.last_sold_at IS NULL OR sales.last_sold_at < DATE_SUB(NOW(), INTERVAL ? DAY))
                     ORDER BY sales.last_sold_at IS NULL DESC, sales.last_sold_at ASC, COALESCE(inv.on_hand, 0) DESC`,
         [log_code, st_id, inactiveDays]

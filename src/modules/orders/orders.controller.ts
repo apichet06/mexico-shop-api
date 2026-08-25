@@ -17,7 +17,7 @@ function normalizePaymentMethod(value: unknown): CheckoutOrderInput["payment_met
 }
 
 function getRequestLanguage(value: unknown): string {
-    return typeof value === "string" && ["th", "en", "ja"].includes(value) ? value : "th";
+    return typeof value === "string" && ["es", "en", "ja", "th"].includes(value) ? value : "es";
 }
 
 function normalizeShippingSelections(value: unknown): ShippingSelection[] {
@@ -217,90 +217,6 @@ export const adminGetSalesByBuyerReport = asyncHandler(async (req, res) => {
         ...(end_date ? { end_date } : {}),
     });
     res.status(200).json({ data: report });
-});
-
-export const adminGetSalesByVendorReport = asyncHandler(async (req, res) => {
-    const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-
-    const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
-    const end_date = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
-    const report = await service.adminGetSalesByVendorReport(st_id, {
-        ...(start_date ? { start_date } : {}),
-        ...(end_date ? { end_date } : {}),
-    });
-    res.status(200).json({ data: report });
-});
-
-export const adminGetPendingPayoutReport = asyncHandler(async (req, res) => {
-    const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-
-    const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
-    const end_date = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
-    const report = await service.adminGetPendingPayoutReport(st_id, {
-        ...(start_date ? { start_date } : {}),
-        ...(end_date ? { end_date } : {}),
-    });
-    res.status(200).json({ data: report });
-});
-
-export const adminGetPayoutSetting = asyncHandler(async (_req, res) => {
-    const setting = await service.adminGetPayoutSetting();
-    res.status(200).json({ data: setting });
-});
-
-export const adminUpdatePayoutSetting = asyncHandler(async (req, res) => {
-    const payout_cycle_days = Number(req.body?.payout_cycle_days);
-    const setting = await service.adminUpdatePayoutSetting(payout_cycle_days);
-    res.status(200).json({ data: setting, message: "อัปเดตรอบจ่ายสำเร็จ" });
-});
-
-export const adminGetPayoutHistory = asyncHandler(async (req, res) => {
-    const st_id = req.query.st_id ? Number(req.query.st_id) : undefined;
-    const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
-    const end_date = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
-    const page = req.query.page ? Number(req.query.page) : undefined;
-    const page_size = req.query.page_size ? Number(req.query.page_size) : undefined;
-
-    const result = await service.adminGetPayoutHistory({
-        ...(st_id !== undefined ? { st_id } : {}),
-        ...(status !== undefined ? { status } : {}),
-        ...(start_date !== undefined ? { start_date } : {}),
-        ...(end_date !== undefined ? { end_date } : {}),
-        ...(page !== undefined ? { page } : {}),
-        ...(page_size !== undefined ? { page_size } : {}),
-    });
-    res.status(200).json({ data: result });
-});
-
-export const adminGetLatestTransferPerStore = asyncHandler(async (_req, res) => {
-    const result = await service.adminGetLatestTransferPerStore();
-    res.status(200).json({ data: result });
-});
-
-export const adminGetPayoutBadgeSummary = asyncHandler(async (_req, res) => {
-    const result = await service.adminGetPayoutBadgeSummary();
-    res.status(200).json({ data: result });
-});
-
-export const adminExecuteTransfer = asyncHandler(async (req, res) => {
-    const st_id = Number(req.body?.st_id);
-    if (!st_id || isNaN(st_id)) throw new ApiError(400, "st_id ไม่ถูกต้อง");
-
-    const result = await service.adminExecuteTransfer(st_id);
-    res.status(200).json({ data: result, message: "โอนเงินสำเร็จ" });
-});
-
-export const adminToggleStorePayout = asyncHandler(async (req, res) => {
-    const st_id = Number(req.params.st_id);
-    const { enabled } = req.body ?? {};
-    if (!st_id || isNaN(st_id)) throw new ApiError(400, "st_id ไม่ถูกต้อง");
-    if (typeof enabled !== "boolean") throw new ApiError(400, "enabled ต้องเป็น true หรือ false");
-
-    const result = await service.adminToggleStorePayout(st_id, enabled);
-    res.status(200).json({ data: result });
 });
 
 export const adminGetOrderById = asyncHandler(async (req, res) => {

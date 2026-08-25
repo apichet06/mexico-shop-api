@@ -172,9 +172,10 @@ export async function createProduct(
     const p_code = await generateProductCode();
 
     const p_name = {
-      th: shortFields.th[0] ?? "",
+      es: shortFields.es[0] ?? "",
       en: shortFields.en[0] ?? "",
       ja: shortFields.ja[0] ?? "",
+      th: shortFields.th[0] ?? "",
     };
 
     const masterData = {
@@ -215,9 +216,10 @@ export async function createProduct(
 
     const p_id = masterRes.insertId;
     const langRows = [
-      [p_id, "th", p_name.th, p_description.th],
+      [p_id, "es", p_name.es, p_description.es],
       [p_id, "en", p_name.en, p_description.en],
       [p_id, "ja", p_name.ja, p_description.ja],
+      [p_id, "th", p_name.th, p_description.th],
     ];
 
     await conn.query(

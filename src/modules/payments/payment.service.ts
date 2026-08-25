@@ -934,7 +934,7 @@ export async function handleChargeComplete(
             // (checkoutOrder ทำแล้วสำหรับ card payment — webhook path นี้ครอบคลุม PromptPay และ 3DS)
             for (const order of confirmedOrders) {
                 const totalLabel = order.grand_total != null
-                    ? ` ยอด ${Number(order.grand_total).toLocaleString("th-TH")} บาท`
+                    ? ` por un total de ${Number(order.grand_total).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}`
                     : "";
                 const orderNo = order.order_no ?? String(order.or_id);
                 try {
@@ -942,8 +942,8 @@ export async function handleChargeComplete(
                         target_type: "STORE",
                         target_id: Number(order.st_id),
                         type: "order:paid",
-                        title: "ชำระเงินสำเร็จ",
-                        message: `คำสั่งซื้อ ${orderNo} ชำระเงินแล้ว${totalLabel}`,
+                        title: "Pago completado",
+                        message: `El pedido ${orderNo} ha sido pagado${totalLabel}.`,
                         action_url: `/dashboard/orders?order_id=${order.or_id}`,
                         ref_type: "ORDER",
                         ref_id: Number(order.or_id),

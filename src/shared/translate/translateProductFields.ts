@@ -1,9 +1,14 @@
 import * as deepl from "deepl-node";
-import { EN, JA, translator } from "./translate.client.js";
+import { EN, ES, JA, TH, translator } from "./translate.client.js";
+import { translateNameGimini } from "./translate_gimini.js";
+
+function normalizeComparison(value: string): string {
+    return value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
 
 export async function translateProductFields(
     texts: string[]
-): Promise<{ th: string[]; en: string[]; ja: string[] }> {
+): Promise<{ es: string[]; en: string[]; ja: string[]; th: string[] }> {
     const cleanTexts = texts.map((text) => (text ?? "").trim());
     const nonEmptyItems = cleanTexts
         .map((text, index) => ({ text, index }))
@@ -11,9 +16,10 @@ export async function translateProductFields(
 
     if (nonEmptyItems.length === 0) {
         return {
-            th: cleanTexts,
+            es: cleanTexts,
             en: cleanTexts.map(() => ""),
             ja: cleanTexts.map(() => ""),
+            th: cleanTexts.map(() => ""),
         };
     }
 
@@ -36,13 +42,15 @@ export async function translateProductFields(
 
     const textsToTranslate = nonEmptyItems.map((item) => item.text);
 
-    const [enRes, jaRes] = await Promise.all([
-        translator.translateText(textsToTranslate, null, EN, options),
-        translator.translateText(textsToTranslate, null, JA, options),
+    const [enRes, jaRes, thRes] = await Promise.all([
+        translator.translateText(textsToTranslate, ES, EN, options),
+        translator.translateText(textsToTranslate, ES, JA, options),
+        translator.translateText(textsToTranslate, ES, TH, options),
     ]);
 
     const en = cleanTexts.map(() => "");
     const ja = cleanTexts.map(() => "");
+    const th = cleanTexts.map(() => "");
 
     enRes.forEach((result: any, translatedIndex: number) => {
         const originalIndex = nonEmptyItems[translatedIndex]?.index;
@@ -53,10 +61,34 @@ export async function translateProductFields(
         const originalIndex = nonEmptyItems[translatedIndex]?.index;
         if (originalIndex !== undefined) ja[originalIndex] = result.text;
     });
+    thRes.forEach((result: any, translatedIndex: number) => {
+        const originalIndex = nonEmptyItems[translatedIndex]?.index;
+        if (originalIndex !== undefined) th[originalIndex] = result.text;
+    });
+
+    // DeepL อาจคืนคำอังกฤษในช่องภาษาไทยสำหรับคำสเปนสั้น ๆ เช่น prueba -> test
+    // ใช้ Gemini เฉพาะรายการที่ผลไทยซ้ำกับอังกฤษ แต่ต้นฉบับสเปนไม่ได้เป็นคำเดียวกัน
+    const suspiciousThaiIndexes = nonEmptyItems
+        .map(({ text, index }) => ({ text, index }))
+        .filter(({ text, index }) => {
+            const source = normalizeComparison(text);
+            const english = normalizeComparison(en[index] ?? "");
+            const thai = normalizeComparison(th[index] ?? "");
+            return thai.length > 0 && thai === english && source !== english;
+        });
+
+    const thaiFallbacks = await Promise.all(
+        suspiciousThaiIndexes.map(({ text }) => translateNameGimini(text)),
+    );
+
+    suspiciousThaiIndexes.forEach(({ index }, fallbackIndex) => {
+        th[index] = thaiFallbacks[fallbackIndex]?.th ?? th[index] ?? "";
+    });
 
     return {
-        th: cleanTexts,
+        es: cleanTexts,
         en,
         ja,
+        th,
     };
 }

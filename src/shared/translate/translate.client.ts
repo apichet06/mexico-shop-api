@@ -1,3 +1,4 @@
+import "dotenv/config";
 import * as deepl from "deepl-node";
 
 const authKey = process.env.DEEPL_AUTH_KEY;
@@ -12,3 +13,5 @@ export const translator = new deepl.Translator(authKey, {
 
 export const EN: deepl.TargetLanguageCode = "en-US";
 export const JA: deepl.TargetLanguageCode = "ja";
+export const TH: deepl.TargetLanguageCode = "th";
+export const ES: deepl.SourceLanguageCode = "es";

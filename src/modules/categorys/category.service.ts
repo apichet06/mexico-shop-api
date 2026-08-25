@@ -82,9 +82,10 @@ export async function createCategory(input: CreateCategoryInput): Promise<number
         // 3) Insert translations (CategoryLangs) 3 แถว
         // แนะนำทำ UNIQUE (c_id, lg_code) ใน DB กันซ้ำ
         const langRows = [
-            [c_id, "th", t.th],
+            [c_id, "es", t.es],
             [c_id, "en", t.en],
             [c_id, "ja", t.ja],
+            [c_id, "th", t.th],
         ];
 
         await conn.query(`INSERT INTO CategoryLangs (c_id,lg_code, cl_name ) VALUES ? `, [langRows]);

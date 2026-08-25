@@ -375,7 +375,7 @@ export async function listCouponProducts(coId: number, stId: number): Promise<Co
             pl.p_name
         FROM CouponProducts cp
         INNER JOIN Products p ON p.p_id = cp.p_id
-        LEFT JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = 'th'
+        LEFT JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = 'es'
         WHERE cp.co_id = ?
         ORDER BY cp.p_id ASC
         `,
@@ -402,7 +402,7 @@ export async function listAvailableCouponProducts(coId: number): Promise<CouponP
             pl.p_name
         FROM CouponProducts cp
         INNER JOIN Products p ON p.p_id = cp.p_id
-        LEFT JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = 'th'
+        LEFT JOIN ProductLangs pl ON pl.p_id = p.p_id AND pl.lg_code = 'es'
         WHERE cp.co_id = ?
         ORDER BY pl.p_name ASC, p.p_code ASC
         `,

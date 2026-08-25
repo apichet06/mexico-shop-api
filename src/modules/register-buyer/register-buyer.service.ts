@@ -511,13 +511,10 @@ export async function getMyAddresses(u_id: number): Promise<AddressDTO[]> {
             lb.longitude,
             lb.formatted_address,
             lb.is_default,
-            p.name_in_thai  AS province_name,
-            d.name_in_thai  AS district_name,
-            s.name_in_thai  AS subdistrict_name
+            lb.state AS province_name,
+            COALESCE(lb.municipality, lb.city) AS district_name,
+            lb.colonia AS subdistrict_name
          FROM Locations_buyer lb
-         LEFT JOIN Provinces    p ON p.id = lb.provinces_id
-         LEFT JOIN Districts    d ON d.id = lb.districts_id
-         LEFT JOIN Subdistricts s ON s.id = lb.subdistricts_id
          WHERE lb.u_id = ?
          ORDER BY lb.is_default DESC, lb.locb_id ASC`,
         [u_id]

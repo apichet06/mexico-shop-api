@@ -36,29 +36,6 @@ export const listCarriers = asyncHandler(async (_req, res) => {
   res.status(200).json({ data });
 });
 
-// ─── Store carrier subset (seller self-service) ────────────────────────────────
-
-export const getMyStoreCarriers = asyncHandler(async (req, res) => {
-  const st_id = Number(req.storeId);
-  if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-
-  const data = await service.listStoreCarriers(st_id);
-  res.status(200).json({ data });
-});
-
-export const updateMyStoreCarriers = asyncHandler(async (req, res) => {
-  const st_id = Number(req.storeId);
-  if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-
-  const body = req.body as Record<string, unknown>;
-  const scIds = Array.isArray(body.sc_ids)
-    ? body.sc_ids.map((value) => parseId(value, "sc_id"))
-    : [];
-
-  await service.replaceStoreCarriers(st_id, scIds);
-  res.status(200).json({ message: "บันทึกขนส่งของร้านสำเร็จ" });
-});
-
 export const createCarrier = asyncHandler(async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.sc_code) throw new ApiError(400, "จำเป็นต้องระบุ sc_code");

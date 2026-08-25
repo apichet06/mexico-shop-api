@@ -50,7 +50,7 @@ function splitSlug(slug: string) {
     return { baseSlug };
 }
 function removeLang(slug: string): string {
-    return slug.replace(/-(th|en|ja)$/, '');
+    return slug.replace(/-(es|en|ja|th)$/, '');
 }
 
 export async function generateUniqueSlug(slug: string): Promise<string> {
@@ -95,7 +95,7 @@ export async function CreateLandingPage(input: LandingpageInput): Promise<number
 
         const lp_description = await translateLexicalContent(input.lp_description);
 
-        const languages = ["th", "en", "ja"] as const;
+        const languages = ["es", "en", "ja", "th"] as const;
 
         let firstInsertId = 0;
 

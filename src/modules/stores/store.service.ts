@@ -25,6 +25,7 @@ import type { empDTO } from "../employees/emp.type.js";
 import * as notiService from "../notifications/notification.service.js";
 import type { NotificationInput } from "../notifications/type.js";
 import type { StoreRegistrationEmailInput } from "../../mailer/type.js";
+import { getSubWarehouseName, MAIN_WAREHOUSE_NAME } from "../locations/location-name.js";
 
 const SELLER_CONFIRMATION_TOKEN_EXPIRES_DAYS = 14;
 const STORE_EMAIL_VERIFICATION_TOKEN_EXPIRES_DAYS = 7;
@@ -371,8 +372,8 @@ export async function requestDocument(
       target_type: "STORE",
       target_id: st_id,
       type: "REQUEST_MORE",
-      title: "เอกสารประกอบ",
-      message: "ขอเอกสารเพิ่มเติมได้แก่" + docLabel,
+      title: "Documentos adicionales",
+      message: `Se requieren los siguientes documentos adicionales: ${docLabel}`,
       action_url: "/dashboard/myShop",
       ref_type: "STORE",
       ref_id: st_id,
@@ -443,8 +444,8 @@ export async function updateStoreStatus(
       target_type: "STORE",
       target_id: st_id,
       type: "STATUS_STORE",
-      title: "อัปเดทสถานะร้าน",
-      message: mapStatusToAction(st_status) + " " + note,
+      title: "Estado de la tienda actualizado",
+      message: `${mapStatusToAction(st_status)}${note ? `: ${note}` : ""}`,
       action_url: "/dashboard/myShop",
       ref_type: "STORE",
       ref_id: st_id,
@@ -533,8 +534,8 @@ export async function UploadDocumetDATA(
     await notiService.NotifyPlatformStores({
       target_type: "STORE",
       type: "NEW_STORE",
-      title: "เอกสารประกอบ",
-      message: "ส่งเอกสาร รอตรวจสอบ ได้แก่ " + docLabel,
+      title: "Documentos recibidos",
+      message: `Se enviaron los siguientes documentos para revisión: ${docLabel}`,
       action_url: "/dashboard/store/dataStore/?st_id=" + stId,
       ref_type: "STORE",
       ref_id: stId,
@@ -673,7 +674,7 @@ export async function createStoreRegister(
       let warehouseCount = 1;
       const locationValues = input.locations.map((loc, index) => {
         const isDefault = index === normalizedDefaultIndex;
-        const locName = isDefault ? "คลังหลัก" : `คลังย่อย ${warehouseCount++}`;
+        const locName = isDefault ? MAIN_WAREHOUSE_NAME : getSubWarehouseName(warehouseCount++);
 
         return [
           stId,
@@ -744,8 +745,8 @@ export async function createStoreRegister(
       target_type: "STORE",
       target_id: stId,
       type: "NEW_STORE",
-      title: "ลงทะเบียนผู้ฝากขาย",
-      message: "ลงทะเบียนผู้ฝากขายสำเร็จ",
+      title: "Registro de consignador",
+      message: "El registro del consignador se completó correctamente.",
       action_url: "/dashboard/myShop/",
       ref_type: "STORE",
       ref_id: stId,
@@ -1035,8 +1036,8 @@ export async function confirmStoreEmail(input: {
       target_type: "STORE",
       target_id: tokenRow.st_id,
       type: "STORE_EMAIL_VERIFIED",
-      title: "อีเมลร้านได้รับการยืนยันแล้ว",
-      message: `ร้าน ${storeRow.st_company_name} ยืนยันอีเมล ${tokenRow.email} แล้ว`,
+      title: "Correo de la tienda verificado",
+      message: `La tienda ${storeRow.st_company_name} verificó el correo ${tokenRow.email}.`,
       action_url: "/dashboard/myShop/",
       ref_type: "STORE",
       ref_id: tokenRow.st_id,
@@ -1264,8 +1265,8 @@ export async function confirmSellerStore(input: {
       .NotifyPlatformStores({
         target_type: "STORE",
         type: "SELLER_PDPA_CONFIRMED",
-        title: "ผู้ฝากขายยืนยัน PDPA แล้ว",
-        message: `ร้าน ${storeRow.st_company_name} ยืนยันข้อมูลและ PDPA แล้ว รอตรวจสอบ`,
+        title: "El consignador confirmó el aviso de privacidad",
+        message: `La tienda ${storeRow.st_company_name} confirmó sus datos y el aviso de privacidad. Está pendiente de revisión.`,
         action_url: `/dashboard/store/dataStore/?st_id=${tokenRow.st_id}`,
         ref_type: "STORE",
         ref_id: tokenRow.st_id,
@@ -1331,9 +1332,6 @@ export async function updateStore(
     }
     if (input.bk_id !== undefined) {
       data.bk_id = input.bk_id;
-    }
-    if (input.omise_recipient_id !== undefined) {
-      data.omise_recipient_id = input.omise_recipient_id;
     }
     const [res] = await pool.query<ResultSetHeader>(
       `UPDATE Store SET ? WHERE st_id = ?`,

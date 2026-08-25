@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
-import { updatePayoutTransferStatus } from "../orders/orders.service.js";
 import { handleChargeComplete } from "../payments/payment.service.js";
 
 export const webhookRouter = Router();
@@ -9,13 +8,10 @@ export const webhookRouter = Router();
  * POST /webhooks/omise
  *
  * รับ event จาก Omise webhook ทุกประเภท
- * Omise จะส่ง POST มาที่ endpoint นี้เมื่อสถานะของ charge หรือ transfer เปลี่ยนแปลง
+ * Omise จะส่ง POST มาที่ endpoint นี้เมื่อสถานะของ charge เปลี่ยนแปลง
  *
  * Event ที่รองรับ:
  *   charge.complete  — ลูกค้าชำระเงิน PromptPay สำเร็จ/ล้มเหลว → อัพเดทสถานะ payment + order
- *   transfer.pay     — Omise โอนเงินให้ seller สำเร็จ
- *   transfer.send    — Omise กำลังส่งเงิน (อยู่ระหว่างดำเนินการ)
- *   transfer.failed  — การโอนเงินล้มเหลว
  *
  * ตอบ 200 เสมอเพื่อบอก Omise ว่าได้รับ event แล้ว
  * ถ้าตอบ 4xx/5xx Omise จะ retry ซ้ำหลายครั้ง
@@ -47,15 +43,6 @@ webhookRouter.post("/omise", asyncHandler(async (req, res) => {
         const chargeStatus = event.data?.status ?? "";
         const chargePaid = event.data?.paid ?? false;
         await handleChargeComplete(resourceId, chargeStatus, chargePaid);
-    }
-
-    // --- Transfer events (การโอนเงินให้ seller) ---
-    else if (key === "transfer.pay" || key === "transfer.paid") {
-        await updatePayoutTransferStatus(resourceId, "paid");
-    } else if (key === "transfer.send" || key === "transfer.sent") {
-        await updatePayoutTransferStatus(resourceId, "sent");
-    } else if (key === "transfer.failed") {
-        await updatePayoutTransferStatus(resourceId, "failed");
     }
 
     res.status(200).json({ received: true });

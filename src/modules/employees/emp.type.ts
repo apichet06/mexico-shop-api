@@ -1,6 +1,7 @@
 
 export type empDTO = {
     e_id: number;
+    e_usercode: string;
     e_firstname: string;
     e_lastname: string;
     e_password: string;
@@ -21,12 +22,14 @@ export type empDTO = {
 }
 
 export type CreateEmpInput = {
+    e_usercode?: string;
     e_firstname: string;
     e_lastname: string;
-    e_password: string;
-    e_email: string;
+    e_password?: string;
+    e_email?: string;
     e_phone: string;
     e_isActive: string;
+    e_add_name?: string;
     e_status: string;
     st_id: number;
 }
@@ -37,7 +40,6 @@ export type CreateStoreInput = {
     st_idcard: string;
     bank_name: string;
     account_number: string;
-    omise_recipient_id: string;
     st_email: string;
     created_at: string;
     st_phone: string;
@@ -57,9 +59,11 @@ export type CreateLocationInput = {
 
 
 export type UpdateEmpInput = {
+    e_usercode: string;
     e_firstname: string;
     e_lastname: string;
-    e_email: string;
+    e_password?: string;
+    e_email?: string;
     e_phone: string;
     e_image: string;
     e_isActive: string;
