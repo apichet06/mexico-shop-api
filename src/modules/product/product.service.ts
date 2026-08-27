@@ -27,6 +27,9 @@ import {
 import { fileUploadImage } from "../../shared/middlewares/fileUploadImage.js";
 import { extractImageSrcsFromLexical } from "../../shared/utils/ฺBase64Image/Lexical/extractImageSrcsFromLexical.js";
 
+// ใช้แค็ตตาล็อกหลักภายในระบบเพียงรายการเดียว ผู้ใช้ไม่ต้องเลือกเว็บไซต์แล้ว
+const PRIMARY_CATALOG_ID = 1;
+
 export async function getProductName(
   p_code: string,
 ): Promise<ProductDTO | null> {
@@ -64,7 +67,7 @@ export async function getOtherDescriptionsByProductId(
 export async function getList(lg_code: string): Promise<ProductDTO[]> {
   const [rows] = await pool.query<RowDataPacket[] & ProductDTO[]>(
     `
-        SELECT a.*,b.pl_id,c.ctl_description,c.ctl_name,f.e_firstname,b.lg_code,e.cl_name,h.b_name,g.ps_name,b.p_title,b.p_name,j.st_company_name,b.p_description,
+        SELECT a.*,b.pl_id,f.e_firstname,b.lg_code,e.cl_name,h.b_name,g.ps_name,b.p_title,b.p_name,j.st_company_name,b.p_description,
             COALESCE(( SELECT JSON_ARRAYAGG(JSON_OBJECT(
                         'ip_id', ip.ip_id,
                         'images', ip.ip_image_url
@@ -93,8 +96,6 @@ export async function getList(lg_code: string): Promise<ProductDTO[]> {
         FROM Products a
         INNER JOIN ProductLangs b
         ON a.p_id = b.p_id
-        INNER JOIN Catalog c
-        ON c.ctl_id = a.ctl_id
         INNER JOIN Categorys d
         ON d.c_id = a.c_id
         INNER JOIN CategoryLangs e
@@ -109,9 +110,9 @@ export async function getList(lg_code: string): Promise<ProductDTO[]> {
         ON i.e_id = a.e_id
         INNER JOIN Store j
         ON j.st_id = i.st_id
-        WHERE b.lg_code = ?
+        WHERE b.lg_code = ? AND a.ctl_id = ?
         ORDER BY a.p_id DESC`,
-    [lg_code],
+    [lg_code, PRIMARY_CATALOG_ID],
   );
   return rows;
 }
@@ -184,7 +185,7 @@ export async function createProduct(
       p_isActive: input.p_isActive,
       c_id: input.c_id,
       b_id: input.b_id,
-      ctl_id: input.ctl_id,
+      ctl_id: PRIMARY_CATALOG_ID,
       ps_id: input.ps_id,
       st_id: input.st_id,
       p_preorder_delivery_days: input.p_preorder_delivery_days,
@@ -298,7 +299,7 @@ export async function UpdateProducts(
     const masterDataProduct = {
       c_id: input.c_id,
       b_id: input.b_id,
-      ctl_id: input.ctl_id,
+      ctl_id: PRIMARY_CATALOG_ID,
       ps_id: input.ps_id,
       p_update_at: new Date(),
       p_isActive: toDbBool(input.p_isActive),

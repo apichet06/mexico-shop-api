@@ -9,15 +9,15 @@ export const list = asyncHandler(async (_req, res) => {
 });
 
 export const create = asyncHandler(async (req, res) => {
-    const { b_name, ctl_id } = req.body;
-    await brands.createBrand({ b_name, ctl_id: Number(ctl_id), e_id: 1 });
+    const { b_name } = req.body;
+    await brands.createBrand({ b_name, e_id: Number(req.empId) });
     res.status(201).json({ message: CommonMessages.insertSuccess });
 });
 
 export const update = asyncHandler(async (req, res) => {
-    const { b_name, ctl_id } = req.body;
+    const { b_name } = req.body;
     const { b_id } = req.params;
-    await brands.updateBrand(Number(b_id), { b_name, ctl_id: Number(ctl_id) });
+    await brands.updateBrand(Number(b_id), { b_name });
     res.status(200).json({ message: CommonMessages.updateSuccess });
 });
 export const deleteBrand = asyncHandler(async (req, res) => {

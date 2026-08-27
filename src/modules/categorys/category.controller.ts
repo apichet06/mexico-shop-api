@@ -13,17 +13,17 @@ export const list = asyncHandler(async (_req, res) => {
 
 export const listBylgCode = asyncHandler(async (_req, res) => {
     const { lg_code } = _req.params;
+    // ถ้าไม่ได้ระบุ catalog ให้ใช้ร้านหลักเพียงร้านเดียว ส่วน query เดิมยังรองรับไว้สำหรับข้อมูลย้อนหลัง
     const ctl_id = _req.query.ctl_id ? Number(_req.query.ctl_id) : undefined;
     const data = await category.getCategoryByLgCode(lg_code as string, ctl_id);
     res.status(200).json({ data });
 });
 
 export const create = asyncHandler(async (req, res) => {
-    const { cl_name, ctl_id } = req.body
+    const { cl_name } = req.body
     const empId = Number(req.empId);
     await category.createCategory({
         e_id: empId,
-        ctl_id,
         cl_name
     });
     res.status(201).json({ message: CommonMessages.insertSuccess });
@@ -33,7 +33,7 @@ export const update = asyncHandler(async (req, res) => {
     const { cl_name } = req.body;
     const { cl_id } = req.params;
 
-    await category.updateCategory(Number(cl_id), { cl_name, ctl_id: Number(req.body.ctl_id) });
+    await category.updateCategory(Number(cl_id), { cl_name });
     res.status(200).json({ message: CommonMessages.updateSuccess });
 });
 

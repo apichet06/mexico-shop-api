@@ -15,12 +15,10 @@ export type CategoryDTO = {
 
 export type CreateCategoryInput = {
     e_id: number;
-    ctl_id: number;
     cl_name: string;
 }
 
 export type UpdateCategoryInput = {
     cl_name: string;
     c_id: number;
-    ctl_id: number;
 }

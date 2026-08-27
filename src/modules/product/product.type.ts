@@ -28,7 +28,6 @@ export type CreateProductInput = {
   e_id: number;
   b_id: number;
   ptag_id: number[];
-  ctl_id: number;
   ps_id: number;
   images: string[];
   p_name: string;
@@ -43,7 +42,6 @@ export type UpdateProductInput = {
   e_id: number;
   b_id: number;
   ptag_id: number[];
-  ctl_id: number;
   ps_id: number;
   p_name: string;
   p_description: string;

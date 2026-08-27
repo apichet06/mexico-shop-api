@@ -5,7 +5,9 @@ import { ApiError, isDupError, isFkConstraintError } from "../../shared/errors/A
 
 import { CommonMessages } from "../../shared/messages/common.messages.js";
 
-const BRAND_DUPLICATE_MESSAGE = "แบรนด์นี้มีอยู่ในเว็บไซต์นี้แล้ว";
+// ระบบเหลือ Catalog หลักเพียงรายการเดียว แบรนด์ใหม่จึงไม่ต้องรับเว็บไซต์จากผู้ใช้
+const PRIMARY_CATALOG_ID = 1;
+const BRAND_DUPLICATE_MESSAGE = "แบรนด์นี้มีอยู่แล้ว";
 const BRAND_INDEX_MESSAGE = "โครงสร้างฐานข้อมูลแบรนด์ยังเช็กซ้ำเฉพาะชื่ออยู่ กรุณาเปลี่ยน unique index เป็น (b_name, ctl_id)";
 
 export async function listBrands(): Promise<BrandsDTO[]> {
@@ -21,8 +23,9 @@ export async function listBrands(): Promise<BrandsDTO[]> {
         FROM Brands a
         LEFT JOIN Catalog b
             ON a.ctl_id = b.ctl_id
+        WHERE a.ctl_id = ?
         ORDER BY a.b_id DESC
-    `);
+    `, [PRIMARY_CATALOG_ID]);
     return rows;
 }
 
@@ -52,7 +55,7 @@ async function getDuplicateBrand(b_name: string, ctl_id: number, excludeBrandId?
 
 export async function createBrand(input: CreateBrandsInput): Promise<number> {
     const brandName = String(input.b_name ?? "").trim();
-    const ctlId = Number(input.ctl_id ?? 0);
+    const ctlId = PRIMARY_CATALOG_ID;
 
     try {
         const duplicate = await getDuplicateBrand(brandName, ctlId);
@@ -83,7 +86,7 @@ export async function updateBrand(b_id: number, input: Partial<BrandsDTO>): Prom
     try {
         await conn.beginTransaction();
         const brandName = String(input.b_name ?? "").trim();
-        const ctlId = Number(input.ctl_id ?? 0);
+        const ctlId = PRIMARY_CATALOG_ID;
 
         const duplicate = await getDuplicateBrand(brandName, ctlId, b_id);
         if (duplicate) {
@@ -96,7 +99,7 @@ export async function updateBrand(b_id: number, input: Partial<BrandsDTO>): Prom
         await conn.rollback();
         if (isDupError(err)) {
             const brandName = String(input.b_name ?? "").trim();
-            const ctlId = Number(input.ctl_id ?? 0);
+            const ctlId = PRIMARY_CATALOG_ID;
             const duplicateInSameCatalog = await getDuplicateBrand(brandName, ctlId, b_id);
             throw new ApiError(409, duplicateInSameCatalog ? BRAND_DUPLICATE_MESSAGE : BRAND_INDEX_MESSAGE);
         }

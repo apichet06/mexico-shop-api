@@ -8,7 +8,8 @@ import { ApiError, isDupError, isFkConstraintError } from "../../shared/errors/A
 import { translateNameGimini } from "../../shared/translate/translate_gimini.js";
 import { translateProductText } from "../../shared/translate/translate.js";
 
-
+// ระบบเหลือหน้าร้านหลักเพียงร้านเดียว จึงผูกหมวดหมู่ใหม่เข้ากับ Catalog หลักอัตโนมัติ
+const PRIMARY_CATALOG_ID = 1;
 
 
 export async function listCategorys(): Promise<CategoryDTO[]> {
@@ -27,14 +28,11 @@ export async function listCategorys(): Promise<CategoryDTO[]> {
     return rows;
 }
 
-export async function getCategoryByLgCode(lg_code: string, ctl_id?: number): Promise<CategoryDTO[]> {
-    const whereConditions = ["b.lg_code = ?"];
-    const queryParams: Array<string | number> = [lg_code];
-
-    if (ctl_id && ctl_id > 0) {
-        whereConditions.push("a.ctl_id = ?");
-        queryParams.push(ctl_id);
-    }
+export async function getCategoryByLgCode(lg_code: string, ctl_id = PRIMARY_CATALOG_ID): Promise<CategoryDTO[]> {
+    // กันค่าที่ไม่ถูกต้องและไม่ปล่อยให้หน้าเดียวเห็นหมวดหมู่จาก catalog เก่าโดยไม่ตั้งใจ
+    const resolvedCatalogId = Number.isFinite(ctl_id) && ctl_id > 0 ? ctl_id : PRIMARY_CATALOG_ID;
+    const whereConditions = ["b.lg_code = ?", "a.ctl_id = ?"];
+    const queryParams: Array<string | number> = [lg_code, resolvedCatalogId];
 
     const [rows] = await pool.query<(RowDataPacket & CategoryDTO)[]>(`
     SELECT
@@ -69,7 +67,7 @@ export async function createCategory(input: CreateCategoryInput): Promise<number
         const masterData = {
             c_sort_order: nextSort,
             e_id: input.e_id,
-            ctl_id: input.ctl_id,
+            ctl_id: PRIMARY_CATALOG_ID,
         };
 
         const [masterRes] = await conn.query<ResultSetHeader>(
