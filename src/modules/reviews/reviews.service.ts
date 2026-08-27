@@ -211,7 +211,6 @@ export async function getFeaturedProductReviews(
            AND pl.lg_code = ?
         WHERE p.ctl_id = ?
           AND p.p_isActive = 1
-          AND p.p_isAccept = 1
           AND ed.product_score >= 4
           AND TRIM(COALESCE(ed.massages, '')) <> ''
          ORDER BY RAND()

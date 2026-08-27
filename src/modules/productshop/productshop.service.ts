@@ -99,7 +99,7 @@ export async function getProductShop({
                     SELECT 1
                     FROM ProductTagMaps ptm
                     WHERE ptm.p_id = a.p_id
-                      AND ptm.ptag_id = 2
+                      AND ptm.ptag_id = 26
                 )
             `)
         }
@@ -110,7 +110,7 @@ export async function getProductShop({
                     SELECT 1
                     FROM ProductTagMaps ptm
                     WHERE ptm.p_id = a.p_id
-                      AND ptm.ptag_id = 1
+                      AND ptm.ptag_id = 14
                 )
             `)
         }
@@ -121,7 +121,7 @@ export async function getProductShop({
                     SELECT 1
                     FROM ProductTagMaps ptm
                     WHERE ptm.p_id = a.p_id
-                      AND ptm.ptag_id = 3
+                      AND ptm.ptag_id = 28
                 )
             `)
         }
@@ -138,7 +138,6 @@ export async function getProductShop({
         }
 
         whereConditions.push(`a.p_isActive = 1`)
-        whereConditions.push(`a.p_isAccept = 1`)
 
         if (in_stock_only) {
             whereConditions.push(`

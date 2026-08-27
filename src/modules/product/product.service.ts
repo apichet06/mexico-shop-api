@@ -183,6 +183,8 @@ export async function createProduct(
       e_id: input.e_id,
       p_code: p_code,
       p_isActive: input.p_isActive,
+      // ระบบ Mexico ไม่มีขั้นตอน seller approval แล้ว
+      p_isAccept: 1,
       c_id: input.c_id,
       b_id: input.b_id,
       ctl_id: PRIMARY_CATALOG_ID,
@@ -306,23 +308,10 @@ export async function UpdateProducts(
       p_preorder_delivery_days: input.p_preorder_delivery_days,
     };
 
-    const [result] = await conn.query<ResultSetHeader>(
+    await conn.query<ResultSetHeader>(
       "UPDATE Products SET ? WHERE p_id = ?",
       [masterDataProduct, p_id],
     );
-    // console.log({
-    //     raw: input.p_isAccept,
-    //     type: typeof input.p_isAccept,
-    //     convert: toDbBool(input.p_isAccept)
-    // });
-    // console.log("update result =>", {
-    //     p_id,
-    //     inputAccept: input.p_isAccept,
-    //     saveAccept: masterDataProduct.p_isAccept,
-    //     affectedRows: result.affectedRows,
-    //     changedRows: result.changedRows,
-    // });
-
     // -----------------------------
     // 4) ถ้ามีรูปใหม่ -> ลบรูปเก่า + insert รูปใหม่
     // -----------------------------
