@@ -77,6 +77,7 @@ export type ProductVariantDTO = {
     total_reserved_qty: number
     available_qty: number
     variant_label: string | null
+    option_item_map: string | null
 }
 
 export type InventoryByVariantDTO = {

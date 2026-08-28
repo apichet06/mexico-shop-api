@@ -47,6 +47,7 @@ export type UpdateProductInput = {
   p_description: string;
   p_isActive: boolean;
   p_preorder_delivery_days: number | null;
+  existing_image_ids?: number[];
 };
 
 export type ImageProductRow = {

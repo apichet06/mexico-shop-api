@@ -465,10 +465,15 @@ export async function getProductShopById(
                 COALESCE(SUM(inv.reserved_qty), 0) AS total_reserved_qty,
                 COALESCE(SUM(inv.on_hand), 0) - COALESCE(SUM(inv.reserved_qty), 0) AS available_qty,
                 GROUP_CONCAT(
-                    DISTINCT CONCAT(ot.otype_name, ': ', poi.poi_value)
+                    DISTINCT CONCAT(COALESCE(otl.otl_name, ot.otype_name), ': ', poi.poi_value)
                     ORDER BY po.otype_id, poi.poi_id
                     SEPARATOR ' | '
-                ) AS variant_label
+                ) AS variant_label,
+                GROUP_CONCAT(
+                    DISTINCT CONCAT(po.otype_id, ':', poi.poi_id)
+                    ORDER BY po.otype_id, poi.poi_id
+                    SEPARATOR '|'
+                ) AS option_item_map
             FROM ProductVariants pv
             LEFT JOIN VariantOptionItems voi
                 ON voi.pv_id = pv.pv_id
@@ -478,6 +483,9 @@ export async function getProductShopById(
                 ON po.potn_id = poi.potn_id
             LEFT JOIN OptionTypes ot
                 ON ot.otype_id = po.otype_id
+            LEFT JOIN OptionTypeLangs otl
+                ON otl.otype_id = ot.otype_id
+               AND otl.lg_code = ?
             LEFT JOIN Inventorys inv
                 ON inv.pv_id = pv.pv_id
             LEFT JOIN UnitLangs ul
@@ -503,7 +511,7 @@ export async function getProductShopById(
                 available_qty DESC,
                 pv.pv_id ASC
             `,
-            [lg_code, p_id]
+            [lg_code, lg_code, p_id]
         )
 
         const [optionRows] = await conn.query<
@@ -521,18 +529,21 @@ export async function getProductShopById(
                 po.potn_id,
                 po.otype_id,
                 ot.otype_code,
-                ot.otype_name,
+                COALESCE(otl.otl_name, ot.otype_name) AS otype_name,
                 poi.poi_id,
                 poi.poi_value
             FROM ProductOptions po
             INNER JOIN OptionTypes ot
                 ON ot.otype_id = po.otype_id
+            LEFT JOIN OptionTypeLangs otl
+                ON otl.otype_id = ot.otype_id
+               AND otl.lg_code = ?
             INNER JOIN ProductOptionItems poi
                 ON poi.potn_id = po.potn_id
             WHERE po.p_id = ?
             ORDER BY po.otype_id, poi.poi_id
             `,
-            [p_id]
+            [lg_code, p_id]
         )
 
         const [tagRows] = await conn.query<(RowDataPacket & ProductTagDTO)[]>(

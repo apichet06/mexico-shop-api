@@ -26,7 +26,10 @@ const TranslationSchema = z.object({
     ja: z.string(),
 });
 
-export async function translateNameGimini(es: string): Promise<{ es: string; en: string; ja: string; th: string }> {
+export async function translateNameGimini(
+    es: string,
+    labelContext = "e-commerce category label"
+): Promise<{ es: string; en: string; ja: string; th: string }> {
     const text = (es ?? "").trim();
     if (!text) return { es: "", en: "", ja: "", th: "" };
 
@@ -38,14 +41,14 @@ export async function translateNameGimini(es: string): Promise<{ es: string; en:
                 parts: [
                     {
                         text: [
-                            "Translate the Spanish e-commerce category name into en-US, Japanese, and Thai.",
-                            "Keep it short like a category label.",
+                            `Translate the Spanish ${labelContext} into en-US, Japanese, and Thai.`,
+                            "Keep it short like a user-interface label.",
                             "Return ONLY JSON that matches the provided schema (no markdown, no extra keys).",
                             "",
                             `Spanish: ${text}`,
                             "",
                             "Context:",
-                            "This text is a short category label for a professional e-commerce platform.",
+                            `This text is a short ${labelContext} for a professional e-commerce platform.`,
                             "The business includes:",
                             "1) Premium curated health and lifestyle products.",
                             "2) Industrial factory and engineering products including:",

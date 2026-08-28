@@ -8,6 +8,7 @@ import { getImagesToDelete } from "../../shared/utils/ฺBase64Image/Lexical/get
 import { deleteImageFiles } from "../../shared/utils/ฺBase64Image/Lexical/deleteImageFiles.js";
 import { filterUnusedImages } from "../../shared/utils/ฺBase64Image/Lexical/filterUnusedImages.js";
 import { deleteManyPhysicalFiles } from "../../shared/helper/deleteUploadFile.js";
+import { ApiError } from "../../shared/errors/ApiError.js";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "";
 
@@ -19,6 +20,28 @@ function parseFormBoolean(value: unknown, fallback: boolean): boolean {
   if (["true", "1", "yes", "on"].includes(normalized)) return true;
   if (["false", "0", "no", "off"].includes(normalized)) return false;
   return fallback;
+}
+
+function parseImageIds(value: unknown): number[] | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  let rawValues: unknown = value;
+  if (typeof value === "string") {
+    try {
+      rawValues = JSON.parse(value);
+    } catch {
+      rawValues = [value];
+    }
+  }
+
+  const values = Array.isArray(rawValues) ? rawValues : [rawValues];
+  const ids = values.map(Number);
+
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new ApiError(400, "La lista de imágenes existentes no es válida");
+  }
+
+  return [...new Set(ids)];
 }
 
 export const list = asyncHandler(async (_req, res) => {
@@ -112,6 +135,7 @@ export const update = asyncHandler(async (req, res) => {
     ps_id,
     p_isActive,
     p_preorder_delivery_days,
+    existing_image_ids,
   } = req.body;
   const pl_id = Number(req.params.pl_id);
   const emp_id = Number(req.empId);
@@ -135,6 +159,7 @@ export const update = asyncHandler(async (req, res) => {
     oldDescription,
     transformedDescription,
   );
+  const existingImageIds = parseImageIds(existing_image_ids);
 
   const data = {
     p_name,
@@ -146,6 +171,9 @@ export const update = asyncHandler(async (req, res) => {
     e_id: emp_id,
     p_isActive: parseFormBoolean(p_isActive, true),
     p_preorder_delivery_days: Number(p_preorder_delivery_days) || 0,
+    ...(existingImageIds !== undefined
+      ? { existing_image_ids: existingImageIds }
+      : {}),
   };
 
   await products.UpdateProducts(pl_id, data, files);

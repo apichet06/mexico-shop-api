@@ -115,7 +115,7 @@ export async function getCart(u_id: number, lg_code = "es"): Promise<CartDTO> {
                 pv.pv_sku,
                 COALESCE(pv.image_url, ip.ip_image_url) AS image_url,
                 GROUP_CONCAT(
-                    DISTINCT CONCAT(ot.otype_name, ': ', poi.poi_value)
+                    DISTINCT CONCAT(COALESCE(otl.otl_name, ot.otype_name), ': ', poi.poi_value)
                     ORDER BY po.otype_id, poi.poi_id
                     SEPARATOR ' | '
                 ) AS variant_label,
@@ -136,13 +136,14 @@ export async function getCart(u_id: number, lg_code = "es"): Promise<CartDTO> {
             LEFT JOIN ProductOptionItems poi ON poi.poi_id = voi.poi_id
             LEFT JOIN ProductOptions po ON po.potn_id = poi.potn_id
             LEFT JOIN OptionTypes ot ON ot.otype_id = po.otype_id
+            LEFT JOIN OptionTypeLangs otl ON otl.otype_id = ot.otype_id AND otl.lg_code = ?
             WHERE ci.cart_id = ?
             GROUP BY
                 ci.ci_id, ci.cart_id, ci.pv_id, ci.qty,
                 ci.unit_price, ci.discount_amount, ci.line_total, ci.is_selected,
                 pv.pv_sku, pv.image_url, ip.ip_image_url, p.p_id, p.ctl_id, p.st_id, s.st_company_name, pl.p_name
             ORDER BY ci.ci_id ASC`,
-            [lg_code, cartId]
+            [lg_code, lg_code, cartId]
         );
 
         const totalAmount = itemRows.reduce((sum, r) => sum + Number(r.line_total), 0);

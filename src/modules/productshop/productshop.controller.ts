@@ -1,6 +1,10 @@
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import * as productShopService from "./productshop.service.js";
 
+function getRequestLanguage(value: unknown): string {
+    return typeof value === "string" && ["es", "en", "ja", "th"].includes(value) ? value : "es";
+}
+
 export const listProductShop = asyncHandler(async (req, res) => {
     const { lg_code } = req.params;
 
@@ -14,7 +18,7 @@ export const listProductShop = asyncHandler(async (req, res) => {
     const in_stock_only = req.query.in_stock_only === "1" || req.query.in_stock_only === "true"
 
     const productShopParams: productShopService.GetProductShopParams = {
-        lg_code: lg_code as string,
+        lg_code: getRequestLanguage(lg_code),
         keyword,
         sort,
         page,
@@ -34,7 +38,7 @@ export const listProductShop = asyncHandler(async (req, res) => {
 
 export const getProductShopById = asyncHandler(async (req, res) => {
     const { p_id } = req.params;
-    const lg_code = req.params.lg_code as string || "es";
+    const lg_code = getRequestLanguage(req.params.lg_code);
     const data = await productShopService.getProductShopById(Number(p_id), lg_code);
     res.status(200).json({ data });
 });

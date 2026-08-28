@@ -952,7 +952,7 @@ async function getCheckoutCartItems(
             st.st_company_name,
             pl.p_name,
             GROUP_CONCAT(
-                DISTINCT CONCAT(ot.otype_name, ': ', poi.poi_value)
+                DISTINCT CONCAT(COALESCE(otl.otl_name, ot.otype_name), ': ', poi.poi_value)
                 ORDER BY po.otype_id, poi.poi_id
                 SEPARATOR ' | '
             ) AS variant_label
@@ -965,6 +965,7 @@ async function getCheckoutCartItems(
         LEFT JOIN ProductOptionItems poi ON poi.poi_id = voi.poi_id
         LEFT JOIN ProductOptions po ON po.potn_id = poi.potn_id
         LEFT JOIN OptionTypes ot ON ot.otype_id = po.otype_id
+        LEFT JOIN OptionTypeLangs otl ON otl.otype_id = ot.otype_id AND otl.lg_code = 'es'
         WHERE ci.cart_id = ?
           ${useExplicitSelection ? "AND ci.ci_id IN (?)" : "AND ci.is_selected = 1"}
         GROUP BY ci.ci_id, ci.pv_id, ci.qty, ci.unit_price, ci.discount_amount,

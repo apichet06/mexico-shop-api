@@ -249,6 +249,8 @@ export async function UpdateProducts(
 
   // เก็บ path ของรูปใหม่ไว้ เผื่อ rollback แล้วต้องลบทิ้ง
   const uploadedPaths: string[] = [];
+  // ลบไฟล์เก่าหลัง commit เท่านั้น เพื่อไม่ให้ DB rollback แล้วชี้ไปหาไฟล์ที่ถูกลบ
+  const removedImagePaths: string[] = [];
 
   try {
     await conn.beginTransaction();
@@ -313,26 +315,42 @@ export async function UpdateProducts(
       [masterDataProduct, p_id],
     );
     // -----------------------------
-    // 4) ถ้ามีรูปใหม่ -> ลบรูปเก่า + insert รูปใหม่
+    // 4) จัดการรูปเดิมที่ต้องเก็บ/ลบ และเพิ่มรูปใหม่
     // -----------------------------
-    if (files.length > 0) {
-      // 4.1 ดึงรูปเก่าจาก DB
+    if (input.existing_image_ids !== undefined || files.length > 0) {
       const [oldImages] = await conn.query<ImageProductRow[] & RowDataPacket[]>(
         "SELECT ip_id, ip_image_url, is_primary, p_id FROM ImageProduct WHERE p_id = ?",
         [p_id],
       );
 
-      // 4.2 ลบ record เก่าออกจาก DB ก่อน
-      await conn.query("DELETE FROM ImageProduct WHERE p_id = ?", [p_id]);
+      // Client เดิมที่ไม่ส่ง existing_image_ids และส่งไฟล์ใหม่ ยังคงใช้พฤติกรรม replace ทั้งหมด
+      const requestedIds = input.existing_image_ids ?? [];
+      const keepIds = [...new Set(requestedIds)];
+      const oldImageIds = new Set(oldImages.map((image) => image.ip_id));
 
-      // 4.3 ลบไฟล์เก่าจริงในเครื่อง
-      for (const oldImage of oldImages) {
-        if (oldImage.ip_image_url) {
-          removePhysicalFile(oldImage.ip_image_url);
-        }
+      if (keepIds.some((id) => !oldImageIds.has(id))) {
+        throw new ApiError(400, "Algunas imágenes no pertenecen a este producto");
       }
 
-      // 4.4 upload รูปใหม่ + insert DB
+      const totalImages = keepIds.length + files.length;
+      if (totalImages < 1 || totalImages > 3) {
+        throw new ApiError(400, "El producto debe tener entre 1 y 3 imágenes");
+      }
+
+      const keepIdSet = new Set(keepIds);
+      const removedImages = oldImages.filter((image) => !keepIdSet.has(image.ip_id));
+
+      if (removedImages.length > 0) {
+        const removedIds = removedImages.map((image) => image.ip_id);
+        await conn.query("DELETE FROM ImageProduct WHERE p_id = ? AND ip_id IN (?)", [
+          p_id,
+          removedIds,
+        ]);
+        removedImagePaths.push(
+          ...removedImages.map((image) => image.ip_image_url).filter(Boolean),
+        );
+      }
+
       for (const [index, file] of files.entries()) {
         const imagePath = await fileUploadImage(
           file,
@@ -346,8 +364,19 @@ export async function UpdateProducts(
         await conn.query<ResultSetHeader>(
           `INSERT INTO ImageProduct (ip_image_url, is_primary, p_id )
                      VALUES (?, ?, ?)`,
-          [normalizedPath, index === 0 ? 1 : null, p_id],
+          [normalizedPath, null, p_id],
         );
+      }
+
+      // กำหนดรูปแรกเป็นรูปหลักเสมอ หลังจากรายการรูปสุดท้ายถูกบันทึกครบแล้ว
+      await conn.query("UPDATE ImageProduct SET is_primary = NULL WHERE p_id = ?", [p_id]);
+      const [primaryRows] = await conn.query<(RowDataPacket & { ip_id: number })[]>(
+        "SELECT ip_id FROM ImageProduct WHERE p_id = ? ORDER BY ip_id ASC LIMIT 1",
+        [p_id],
+      );
+      const primaryId = primaryRows[0]?.ip_id;
+      if (primaryId) {
+        await conn.query("UPDATE ImageProduct SET is_primary = 1 WHERE ip_id = ?", [primaryId]);
       }
     }
 
@@ -363,6 +392,11 @@ export async function UpdateProducts(
   } finally {
     conn.release();
   }
+
+  // การลบไฟล์เป็น cleanup หลัง DB สำเร็จ ความผิดพลาดของไฟล์ใดไฟล์หนึ่งไม่ควรย้อนผล DB
+  await Promise.allSettled(
+    removedImagePaths.map((imagePath) => removePhysicalFile(imagePath)),
+  );
 }
 
 export async function getOptionVariant(
