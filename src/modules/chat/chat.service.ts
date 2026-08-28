@@ -15,8 +15,8 @@ const autoReplyTimers = new Map<number, NodeJS.Timeout>();
 // แก้ตรงนี้เพื่อปรับเวลาและข้อความ
 const AUTO_REPLY_DELAY_MS = 60_000; // 1 นาที
 const AUTO_REPLY_MESSAGE =
-    "ขออภัยในความไม่สะดวก ขณะนี้เจ้าหน้าที่ติดภารกิจและไม่สามารถตอบกลับได้ในขณะนี้\n" +
-    "เมื่อเจ้าหน้าที่พร้อมแล้วจะรีบตอบกลับคุณโดยเร็วที่สุด ขอบคุณที่ติดต่อมาค่ะ";
+    "Lamentamos la demora. En este momento, nuestros agentes están ocupados y no pueden responder.\n" +
+    "Te responderemos lo antes posible. Gracias por comunicarte con nosotros.";
 
 // เรียกเมื่อ admin ส่งข้อความ เพื่อยกเลิก timer ที่รออยู่
 function cancelAutoReply(conv_id: number): void {
@@ -122,7 +122,7 @@ export async function getOrCreateConversation(
 
         const newConv = await getBuyerConversationById(conv_id, userId, conn);
 
-        if (!newConv) throw new ApiError(500, "สร้างห้องแชทไม่สำเร็จ");
+        if (!newConv) throw new ApiError(500, "No se pudo crear la conversación.");
         return newConv;
     } catch (err) {
         await conn.rollback();
@@ -138,7 +138,7 @@ async function getPlatformStoreId(): Promise<number> {
     );
 
     const platformStoreId = rows[0]?.st_id;
-    if (!platformStoreId) throw new ApiError(404, "ไม่พบร้าน Platform สำหรับห้องแชท");
+    if (!platformStoreId) throw new ApiError(404, "No se encontró la tienda de la plataforma para esta conversación.");
 
     return platformStoreId;
 }
@@ -299,7 +299,7 @@ async function canStoreChatWithTarget(storeId: number, targetStoreId: number): P
 
 export async function adminGetOrCreateStoreConversation(storeId: number, targetStoreId: number): Promise<ConversationDTO> {
     if (!await canStoreChatWithTarget(storeId, targetStoreId)) {
-        throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงร้านค้านี้");
+        throw new ApiError(403, "No tienes permiso para acceder a esta tienda.");
     }
 
     const conn = await pool.getConnection();
@@ -341,7 +341,7 @@ export async function adminGetOrCreateStoreConversation(storeId: number, targetS
 
         const [convResult] = await conn.query<ResultSetHeader>(
             `INSERT INTO Conversations (channel, st_id, subject, status, created_at, updated_at)
-             VALUES ('support', ?, 'ติดต่อร้านค้า', 'open', NOW(), NOW())`,
+             VALUES ('support', ?, 'Contactar con la tienda', 'open', NOW(), NOW())`,
             [targetStoreId]
         );
         const conv_id = convResult.insertId;
@@ -374,7 +374,7 @@ export async function getMessages(conv_id: number, userId: number): Promise<Mess
          WHERE conv_id = ? AND actor_type = 'user' AND actor_id = ?`,
         [conv_id, userId]
     );
-    if (!participants[0]) throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
+    if (!participants[0]) throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
 
     const [rows] = await pool.query<(RowDataPacket & MessageDTO)[]>(
         `${selectMessageSql()} WHERE m.conv_id = ? AND m.deleted_at IS NULL ORDER BY m.created_at ASC`,
@@ -389,7 +389,7 @@ export async function markAsRead(conv_id: number, userId: number): Promise<void>
          WHERE conv_id = ? AND actor_type = 'user' AND actor_id = ?`,
         [conv_id, userId]
     );
-    if (!participants[0]) throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
+    if (!participants[0]) throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
 
     const [lastMsg] = await pool.query<(RowDataPacket & { max_id: number | null })[]>(
         `SELECT MAX(msg_id) AS max_id FROM messages WHERE conv_id = ? AND deleted_at IS NULL`,
@@ -417,7 +417,7 @@ export async function sendMessage(
          WHERE conv_id = ? AND actor_type = 'user' AND actor_id = ?`,
         [conv_id, userId]
     );
-    if (!participants[0]) throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
+    if (!participants[0]) throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
 
     const [result] = await pool.query<ResultSetHeader>(
         `INSERT INTO messages (conv_id, sender_type, sender_id, message_type, body, created_at)
@@ -516,8 +516,8 @@ export async function sendImageMessages(
          WHERE conv_id = ? AND actor_type = 'user' AND actor_id = ?`,
         [conv_id, userId]
     );
-    if (!participants[0]) throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
-    if (!files.length) throw new ApiError(400, "กรุณาแนบรูปภาพ");
+    if (!participants[0]) throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
+    if (!files.length) throw new ApiError(400, "Adjunta al menos una imagen.");
 
     const messages: MessageDTO[] = [];
     for (const [index, file] of files.entries()) {
@@ -542,11 +542,11 @@ export async function postRefundContextToConversation(options: {
 }): Promise<void> {
     const conv = await getOrCreateConversation(options.userId, options.storeId);
     const lines = [
-        "ลูกค้าส่งคำขอคืนสินค้า/คืนเงิน",
-        `Order: ${options.orderNo}`,
-        `ยอดที่ขอคืน: ${Number(options.amount).toLocaleString("th-TH", { style: "currency", currency: "THB" })}`,
-        options.returnTracking ? `Tracking คืนสินค้า: ${options.returnTracking}` : null,
-        `เหตุผล: ${options.reason}`,
+        "El cliente envió una solicitud de devolución/reembolso",
+        `Pedido: ${options.orderNo}`,
+        `Importe solicitado: ${Number(options.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}`,
+        options.returnTracking ? `Seguimiento de la devolución: ${options.returnTracking}` : null,
+        `Motivo: ${options.reason}`,
     ].filter(Boolean);
 
     const summary = await insertUserMessage(conv.conv_id, options.userId, lines.join("\n"), 'text');
@@ -764,7 +764,7 @@ export async function adminGetConversations(storeId: number, empId: number): Pro
         .map(store => ({
             conv_id: -Number(store.st_id),
             channel: "support",
-            subject: "ติดต่อร้านค้า",
+            subject: "Contactar con la tienda",
             status: "open",
             st_id: Number(store.st_id),
             created_at: new Date(0),
@@ -822,7 +822,7 @@ export async function adminGetConversations(storeId: number, empId: number): Pro
 
 export async function adminGetMessages(conv_id: number, storeId: number): Promise<MessageDTO[]> {
     if (!await canAdminAccessConversation(conv_id, storeId))
-        throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
+        throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
 
     const [rows] = await pool.query<(RowDataPacket & MessageDTO)[]>(
         `${selectMessageSql()} WHERE m.conv_id = ? AND m.deleted_at IS NULL ORDER BY m.created_at ASC`,
@@ -872,10 +872,10 @@ export async function adminSendImages(
     files: Express.Multer.File[]
 ): Promise<MessageDTO[]> {
     if (!await canAdminAccessConversation(conv_id, storeId))
-        throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
+        throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
 
     cancelAutoReply(conv_id);
-    if (!files.length) throw new ApiError(400, "กรุณาแนบรูปภาพ");
+    if (!files.length) throw new ApiError(400, "Adjunta al menos una imagen.");
 
     const [convRows] = await pool.query<(RowDataPacket & { st_id: number })[]>(
         `SELECT st_id FROM Conversations WHERE conv_id = ?`,
@@ -926,7 +926,7 @@ export async function adminSendMessage(
     message_type: string = 'text'
 ): Promise<MessageDTO> {
     if (!await canAdminAccessConversation(conv_id, storeId))
-        throw new ApiError(403, "ไม่มีสิทธิ์เข้าถึงการสนทนานี้");
+        throw new ApiError(403, "No tienes permiso para acceder a esta conversación.");
 
     cancelAutoReply(conv_id);
 

@@ -6,7 +6,7 @@ import * as service from "./chat.service.js";
 
 export const getOrCreateConversation = asyncHandler(async (req, res) => {
     const userId = req.userId;
-    if (!userId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!userId) throw new ApiError(401, "No has iniciado sesión.");
     const stId = Number(req.body?.st_id) || undefined;
     const conv = await service.getOrCreateConversation(userId, stId);
     res.json({ data: conv });
@@ -14,47 +14,47 @@ export const getOrCreateConversation = asyncHandler(async (req, res) => {
 
 export const listConversations = asyncHandler(async (req, res) => {
     const userId = req.userId;
-    if (!userId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!userId) throw new ApiError(401, "No has iniciado sesión.");
     const conversations = await service.listConversations(userId);
     res.json({ data: conversations });
 });
 
 export const getMessages = asyncHandler(async (req, res) => {
     const userId = req.userId;
-    if (!userId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!userId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     const messages = await service.getMessages(conv_id, userId);
     res.json({ data: messages });
 });
 
 export const markAsRead = asyncHandler(async (req, res) => {
     const userId = req.userId;
-    if (!userId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!userId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     await service.markAsRead(conv_id, userId);
     res.json({ success: true });
 });
 
 export const sendMessage = asyncHandler(async (req, res) => {
     const userId = req.userId;
-    if (!userId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!userId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     const { body, message_type } = req.body ?? {};
-    if (!body?.trim()) throw new ApiError(400, "กรุณาระบุข้อความ");
+    if (!body?.trim()) throw new ApiError(400, "Escribe un mensaje.");
     const message = await service.sendMessage(conv_id, userId, body.trim(), message_type ?? 'text');
     res.status(201).json({ data: message });
 });
 
 export const sendImages = asyncHandler(async (req, res) => {
     const userId = req.userId;
-    if (!userId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!userId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     const files = (req.files as Express.Multer.File[]) ?? [];
-    if (!files.length) throw new ApiError(400, "กรุณาแนบรูปภาพ");
+    if (!files.length) throw new ApiError(400, "Adjunta al menos una imagen.");
     const messages = await service.sendImageMessages(conv_id, userId, files);
     res.status(201).json({ data: messages });
 });
@@ -65,16 +65,16 @@ export const adminListConversations = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
     const empId = req.empId;
 
-    if (!storeId || !empId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId || !empId) throw new ApiError(401, "No has iniciado sesión.");
     const conversations = await service.adminGetConversations(storeId, empId);
     res.json({ data: conversations });
 });
 
 export const adminGetOrCreateStoreConversation = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
-    if (!storeId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId) throw new ApiError(401, "No has iniciado sesión.");
     const targetStoreId = Number(req.body?.target_store_id);
-    if (!targetStoreId) throw new ApiError(400, "target_store_id ไม่ถูกต้อง");
+    if (!targetStoreId) throw new ApiError(400, "El identificador de la tienda de destino no es válido.");
     const conversation = await service.adminGetOrCreateStoreConversation(storeId, targetStoreId);
     res.json({ data: conversation });
 });
@@ -83,9 +83,9 @@ export const adminGetOrCreateStoreConversation = asyncHandler(async (req, res) =
 // ถ้ามีห้อง open อยู่แล้วจะคืน conv เดิม ถ้าไม่มีจะสร้างใหม่
 export const adminGetOrCreateBuyerConversation = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
-    if (!storeId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId) throw new ApiError(401, "No has iniciado sesión.");
     const buyerId = Number(req.body?.buyer_id);
-    if (!buyerId) throw new ApiError(400, "buyer_id ไม่ถูกต้อง");
+    if (!buyerId) throw new ApiError(400, "El identificador del comprador no es válido.");
     const conversation = await service.adminGetOrCreateBuyerConversation(storeId, buyerId);
     res.json({ data: conversation });
 });
@@ -93,9 +93,9 @@ export const adminGetOrCreateBuyerConversation = asyncHandler(async (req, res) =
 export const adminGetMessages = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
     const empId = req.empId;
-    if (!storeId || !empId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId || !empId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
 
     const messages = await service.adminGetMessages(conv_id, storeId);
     res.json({ data: messages });
@@ -104,9 +104,9 @@ export const adminGetMessages = asyncHandler(async (req, res) => {
 export const adminMarkAsRead = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
     const empId = req.empId;
-    if (!storeId || !empId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId || !empId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     await service.adminMarkAsRead(conv_id, storeId, empId);
     res.json({ success: true });
 });
@@ -114,11 +114,11 @@ export const adminMarkAsRead = asyncHandler(async (req, res) => {
 export const adminSendImages = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
     const empId = req.empId;
-    if (!storeId || !empId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId || !empId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     const files = (req.files as Express.Multer.File[]) ?? [];
-    if (!files.length) throw new ApiError(400, "กรุณาแนบรูปภาพ");
+    if (!files.length) throw new ApiError(400, "Adjunta al menos una imagen.");
     const messages = await service.adminSendImages(conv_id, storeId, empId, files);
     res.status(201).json({ data: messages });
 });
@@ -126,11 +126,11 @@ export const adminSendImages = asyncHandler(async (req, res) => {
 export const adminSendMessage = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
     const empId = req.empId;
-    if (!storeId || !empId) throw new ApiError(401, "ไม่ได้เข้าสู่ระบบ");
+    if (!storeId || !empId) throw new ApiError(401, "No has iniciado sesión.");
     const conv_id = Number(req.params.conv_id);
-    if (!conv_id) throw new ApiError(400, "conv_id ไม่ถูกต้อง");
+    if (!conv_id) throw new ApiError(400, "El identificador de la conversación no es válido.");
     const { body, message_type } = req.body ?? {};
-    if (!body?.trim()) throw new ApiError(400, "กรุณาระบุข้อความ");
+    if (!body?.trim()) throw new ApiError(400, "Escribe un mensaje.");
     const message = await service.adminSendMessage(conv_id, storeId, empId, body.trim(), message_type ?? 'text');
     res.status(201).json({ data: message });
 });
