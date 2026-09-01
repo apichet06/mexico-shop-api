@@ -4,12 +4,12 @@ import { escapeHtml, uniqueEmails } from "./mail-utils.js";
 
 function statusLabel(status: string): string {
     const map: Record<string, string> = {
-        PENDING: "รอตรวจสอบ",
-        ACTIVE: "อนุมัติ พร้อมใช้งาน",
-        REQUEST: "ขอเอกสารเพิ่มเติม",
-        UPLOAD: "ส่งเอกสาร รอตรวจสอบ",
-        REJECTED: "ตีกลับคำขอ",
-        SUSPENDED: "ระงับการใช้งาน",
+        PENDING: "Pendiente de revisión",
+        ACTIVE: "Aprobado, listo para usar",
+        REQUEST: "Se requieren documentos adicionales",
+        UPLOAD: "Documentos enviados, en revisión",
+        REJECTED: "Solicitud rechazada",
+        SUSPENDED: "Cuenta suspendida",
     };
     return map[status] ?? status;
 }
@@ -32,8 +32,8 @@ function memberName(member: StoreRegistrationMember): string {
 
 function roleLabel(role: string): string {
     const map: Record<string, string> = {
-        Owner: "ผู้ดูแลร้านผู้ฝากขาย",
-        Staff: "พนักงานร้าน",
+        Owner: "Administrador del consignador",
+        Staff: "Empleado de la tienda",
     };
     return map[role] ?? role;
 }
@@ -44,21 +44,21 @@ function buildStoreRegistrationText(input: StoreRegistrationEmailInput): string 
         .join("\n");
 
     return [
-        "ลงทะเบียนผู้ฝากขายสำเร็จ",
+        "Registro de consignador exitoso",
         "",
-        `ร้าน: ${input.storeName}`,
-        `รหัสร้าน: ${input.storeNumber}`,
-        `อีเมลร้าน: ${input.storeEmail}`,
-        input.storePhone ? `เบอร์โทรร้าน: ${input.storePhone}` : "",
-        `สถานะปัจจุบัน: ${statusLabel(input.status)}`,
+        `Tienda: ${input.storeName}`,
+        `ID de la tienda: ${input.storeNumber}`,
+        `Correo de la tienda: ${input.storeEmail}`,
+        input.storePhone ? `Teléfono de la tienda: ${input.storePhone}` : "",
+        `Estado actual: ${statusLabel(input.status)}`,
         "",
-        "สมาชิกร้านที่ใช้เข้าใช้งานระบบ:",
+        "Miembros de la tienda con acceso al sistema:",
         members || "-",
         "",
-        `เข้าใช้งาน Backoffice: ${process.env.BACKOFFICE_URL ?? "-"}`,
-        "ใช้รหัสผ่านที่ตั้งไว้ตอนสมัครเพื่อเข้าสู่ระบบ",
+        `Accede al Backoffice: ${process.env.BACKOFFICE_URL ?? "-"}`,
+        "Usa la contraseña que estableciste durante el registro para iniciar sesión.",
         "",
-        `ติดต่อทีมงาน: ${process.env.SUPPORT_EMAIL ?? process.env.MAIL_FROM_EMAIL ?? "-"}`,
+        `Contacto: ${process.env.SUPPORT_EMAIL ?? process.env.MAIL_FROM_EMAIL ?? "-"}`,
     ].filter(Boolean).join("\n");
 }
 
@@ -102,8 +102,8 @@ function buildStoreRegistrationHtml(input: StoreRegistrationEmailInput): string 
                                                         </td>
                                                     </tr>
                                                 </table>
-                                                <h1 style="margin:28px 0 8px;color:#ffffff;font-size:28px;line-height:1.3;font-weight:800;">ลงทะเบียนผู้ฝากขายสำเร็จ</h1>
-                                                <p style="margin:0;color:#dbeafe;font-size:15px;">ระบบได้รับข้อมูลร้านของคุณแล้ว และจะดำเนินการตามสถานะล่าสุดด้านล่าง</p>
+                                                <h1 style="margin:28px 0 8px;color:#ffffff;font-size:28px;line-height:1.3;font-weight:800;">Registro de consignador exitoso</h1>
+                                                <p style="margin:0;color:#dbeafe;font-size:15px;">Hemos recibido la información de tu tienda y continuaremos según el estado más reciente indicado abajo.</p>
                                             </td>
                                         </tr>
                                     </table>
@@ -123,23 +123,23 @@ function buildStoreRegistrationHtml(input: StoreRegistrationEmailInput): string 
                                             <td style="padding:18px 22px;">
                                                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
                                                     <tr>
-                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;width:34%;">รหัสร้าน</td>
+                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;width:34%;">ID de la tienda</td>
                                                         <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:700;">${escapeHtml(input.storeNumber)}</td>
                                                     </tr>
                                                     <tr>
-                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;">อีเมลร้าน</td>
+                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;">Correo de la tienda</td>
                                                         <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:700;">
                                                             <a href="mailto:${escapeHtml(input.storeEmail)}" style="color:#1d4ed8;text-decoration:none;">${escapeHtml(input.storeEmail)}</a>
                                                         </td>
                                                     </tr>
                                                     ${input.storePhone ? `
                                                     <tr>
-                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;">เบอร์โทรร้าน</td>
+                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;">Teléfono de la tienda</td>
                                                         <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:700;">${escapeHtml(input.storePhone)}</td>
                                                     </tr>
                                                     ` : ""}
                                                     <tr>
-                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;">สถานะปัจจุบัน</td>
+                                                        <td style="padding:8px 0;color:#64748b;font-size:13px;">Estado actual</td>
                                                         <td style="padding:8px 0;color:${status.color};font-size:14px;font-weight:800;">${escapeHtml(statusLabel(input.status))}</td>
                                                     </tr>
                                                 </table>
@@ -151,14 +151,14 @@ function buildStoreRegistrationHtml(input: StoreRegistrationEmailInput): string 
 
                             <tr>
                                 <td style="padding:18px 32px 8px;">
-                                    <h2 style="margin:0 0 12px;color:#0f172a;font-size:18px;line-height:1.4;font-weight:800;">สมาชิกร้านที่ใช้เข้าใช้งานระบบ</h2>
+                                    <h2 style="margin:0 0 12px;color:#0f172a;font-size:18px;line-height:1.4;font-weight:800;">Miembros de la tienda con acceso al sistema</h2>
                                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#ffffff;">
                                         <thead>
                                             <tr style="background:#f8fafc;">
-                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">ชื่อ</th>
-                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">อีเมล</th>
-                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">สิทธิ์</th>
-                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">เบอร์โทร</th>
+                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">Nombre</th>
+                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">Correo electrónico</th>
+                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">Rol</th>
+                                                <th align="left" style="padding:13px 16px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:800;">Teléfono</th>
                                             </tr>
                                         </thead>
                                         <tbody>${members || `<tr><td colspan="4" style="padding:16px;color:#64748b;">-</td></tr>`}</tbody>
@@ -171,12 +171,12 @@ function buildStoreRegistrationHtml(input: StoreRegistrationEmailInput): string 
                                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
                                         <tr>
                                             <td style="padding:20px 22px;">
-                                                <p style="margin:0 0 14px;color:#334155;font-size:14px;">ใช้รหัสผ่านที่ตั้งไว้ตอนสมัครเพื่อเข้าสู่ระบบ Backoffice</p>
+                                                <p style="margin:0 0 14px;color:#334155;font-size:14px;">Usa la contraseña que estableciste durante el registro para iniciar sesión en el Backoffice.</p>
                                                 ${backofficeUrl ? `
-                                                    <a href="${escapeHtml(backofficeUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:12px 18px;font-size:14px;font-weight:800;">เข้าใช้งาน Backoffice</a>
+                                                    <a href="${escapeHtml(backofficeUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:12px 18px;font-size:14px;font-weight:800;">Acceder al Backoffice</a>
                                                     <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.5;">URL: <a href="${escapeHtml(backofficeUrl)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(backofficeUrl)}</a></p>
-                                                ` : `<p style="margin:0;color:#b91c1c;font-size:13px;font-weight:700;">ยังไม่ได้ตั้งค่า BACKOFFICE_URL สำหรับลิงก์เข้าใช้งาน</p>`}
-                                                <p style="margin:18px 0 0;color:#64748b;font-size:13px;">หากมีคำถามหรือต้องการแก้ไขข้อมูล กรุณาติดต่อ <a href="mailto:${escapeHtml(supportEmail)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(supportEmail)}</a></p>
+                                                ` : `<p style="margin:0;color:#b91c1c;font-size:13px;font-weight:700;">Aún no se ha configurado BACKOFFICE_URL para el enlace de acceso.</p>`}
+                                                <p style="margin:18px 0 0;color:#64748b;font-size:13px;">Si tienes alguna pregunta o necesitas corregir información, contáctanos en <a href="mailto:${escapeHtml(supportEmail)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(supportEmail)}</a></p>
                                             </td>
                                         </tr>
                                     </table>
@@ -199,7 +199,7 @@ export async function sendStoreRegistrationEmail(input: StoreRegistrationEmailIn
 
     await sendMail({
         to: recipients,
-        subject: `Arcana: ลงทะเบียนร้าน ${input.storeName} สำเร็จ`,
+        subject: `Arcana: registro de la tienda ${input.storeName} exitoso`,
         text: buildStoreRegistrationText(input),
         html: buildStoreRegistrationHtml(input),
     });

@@ -8,16 +8,16 @@ function buildName(input: EmployeeEmailVerificationEmailInput): string {
 
 function buildText(input: EmployeeEmailVerificationEmailInput): string {
     return [
-        "ยืนยันอีเมลผู้ใช้งานร้าน",
+        "Verifica el correo del usuario de la tienda",
         "",
-        `ชื่อผู้ใช้: ${buildName(input)}`,
-        `อีเมล: ${input.email}`,
-        input.storeName ? `ร้าน: ${input.storeName}` : null,
-        input.role ? `สิทธิ์: ${input.role}` : null,
-        `ลิงก์ยืนยันอีเมล: ${input.verifyUrl}`,
-        `ลิงก์หมดอายุ: ${input.expiresAt.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}`,
+        `Nombre de usuario: ${buildName(input)}`,
+        `Correo electrónico: ${input.email}`,
+        input.storeName ? `Tienda: ${input.storeName}` : null,
+        input.role ? `Rol: ${input.role}` : null,
+        `Enlace de verificación de correo: ${input.verifyUrl}`,
+        `El enlace caduca: ${input.expiresAt.toLocaleString("es-MX", { timeZone: "America/Mexico_City" })}`,
         "",
-        "กรุณากดยืนยันเพื่อให้อีเมลนี้เป็นอีเมลผู้ใช้งานที่ตรวจสอบแล้ว",
+        "Confirma para que este correo quede registrado como el correo verificado del usuario.",
     ].filter(Boolean).join("\n");
 }
 
@@ -33,8 +33,8 @@ function buildHtml(input: EmployeeEmailVerificationEmailInput): string {
                             <tr>
                                 <td style="padding:30px 32px;background:#0f172a;color:#ffffff;">
                                     <div style="font-size:22px;font-weight:800;">Arcana</div>
-                                    <h1 style="margin:24px 0 8px;font-size:26px;line-height:1.35;">ยืนยันอีเมลผู้ใช้งานร้าน</h1>
-                                    <p style="margin:0;color:#dbeafe;font-size:15px;">ยืนยันว่าอีเมลนี้ใช้งานได้จริงสำหรับบัญชีผู้ดูแลร้านหรือพนักงาน</p>
+                                    <h1 style="margin:24px 0 8px;font-size:26px;line-height:1.35;">Verifica el correo del usuario de la tienda</h1>
+                                    <p style="margin:0;color:#dbeafe;font-size:15px;">Confirma que este correo funciona correctamente para la cuenta del administrador o empleado de la tienda.</p>
                                 </td>
                             </tr>
                             <tr>
@@ -42,13 +42,13 @@ function buildHtml(input: EmployeeEmailVerificationEmailInput): string {
                                     <p style="margin:0 0 8px;color:#64748b;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">Employee</p>
                                     <p style="margin:0 0 4px;color:#0f172a;font-size:24px;font-weight:800;">${escapeHtml(buildName(input))}</p>
                                     <p style="margin:0;color:#334155;font-size:14px;">${escapeHtml(input.email)}</p>
-                                    ${input.storeName ? `<p style="margin:6px 0 0;color:#64748b;font-size:13px;">ร้าน: ${escapeHtml(input.storeName)}</p>` : ""}
-                                    ${input.role ? `<p style="margin:4px 0 0;color:#64748b;font-size:13px;">สิทธิ์: ${escapeHtml(input.role)}</p>` : ""}
-                                    <p style="margin:24px 0 20px;color:#334155;font-size:14px;">กรุณากดปุ่มด้านล่างเพื่อยืนยันอีเมลผู้ใช้งานนี้</p>
-                                    <a href="${escapeHtml(input.verifyUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:12px 18px;font-size:14px;font-weight:800;">ยืนยันอีเมลผู้ใช้งาน</a>
+                                    ${input.storeName ? `<p style="margin:6px 0 0;color:#64748b;font-size:13px;">Tienda: ${escapeHtml(input.storeName)}</p>` : ""}
+                                    ${input.role ? `<p style="margin:4px 0 0;color:#64748b;font-size:13px;">Rol: ${escapeHtml(input.role)}</p>` : ""}
+                                    <p style="margin:24px 0 20px;color:#334155;font-size:14px;">Haz clic en el siguiente botón para verificar este correo de usuario.</p>
+                                    <a href="${escapeHtml(input.verifyUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px;padding:12px 18px;font-size:14px;font-weight:800;">Verificar correo de usuario</a>
                                     <p style="margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;">URL: <a href="${escapeHtml(input.verifyUrl)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(input.verifyUrl)}</a></p>
-                                    <p style="margin:16px 0 0;color:#64748b;font-size:13px;">ลิงก์หมดอายุ: ${escapeHtml(input.expiresAt.toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }))}</p>
-                                    <p style="margin:18px 0 0;color:#64748b;font-size:13px;">หากคุณไม่ได้ร้องขอ กรุณาติดต่อ <a href="mailto:${escapeHtml(supportEmail)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(supportEmail)}</a></p>
+                                    <p style="margin:16px 0 0;color:#64748b;font-size:13px;">El enlace caduca: ${escapeHtml(input.expiresAt.toLocaleString("es-MX", { timeZone: "America/Mexico_City" }))}</p>
+                                    <p style="margin:18px 0 0;color:#64748b;font-size:13px;">Si tú no solicitaste esto, contáctanos en <a href="mailto:${escapeHtml(supportEmail)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(supportEmail)}</a></p>
                                 </td>
                             </tr>
                         </table>
@@ -62,7 +62,7 @@ function buildHtml(input: EmployeeEmailVerificationEmailInput): string {
 export async function sendEmployeeEmailVerificationEmail(input: EmployeeEmailVerificationEmailInput): Promise<void> {
     await sendMail({
         to: input.email,
-        subject: "Arcana: ยืนยันอีเมลผู้ใช้งานร้าน",
+        subject: "Arcana: verifica el correo del usuario de la tienda",
         text: buildText(input),
         html: buildHtml(input),
     });

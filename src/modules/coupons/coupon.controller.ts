@@ -5,25 +5,25 @@ import * as service from "./coupon.service.js";
 import type { CouponDiscountType } from "./type.js";
 
 function requireStoreId(storeId: number | undefined): number {
-    if (!storeId) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!storeId) throw new ApiError(401, "No se encontró la información de la tienda.");
     return Number(storeId);
 }
 
 function requireUserId(userId: number | undefined): number {
-    if (!userId) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
+    if (!userId) throw new ApiError(401, "No se encontró la información del usuario.");
     return Number(userId);
 }
 
 function parseId(value: unknown, name: string): number {
-    if (Array.isArray(value)) throw new ApiError(400, `${name} ไม่ถูกต้อง`);
+    if (Array.isArray(value)) throw new ApiError(400, `${name} no es válido`);
     const id = Number(value);
-    if (!Number.isInteger(id) || id <= 0) throw new ApiError(400, `${name} ไม่ถูกต้อง`);
+    if (!Number.isInteger(id) || id <= 0) throw new ApiError(400, `${name} no es válido`);
     return id;
 }
 
 function normalizeDiscountType(value: unknown): CouponDiscountType {
     if (value !== "percent" && value !== "amount") {
-        throw new ApiError(400, "discount_type ต้องเป็น percent หรือ amount");
+        throw new ApiError(400, "discount_type debe ser percent o amount.");
     }
 
     return value;
@@ -42,7 +42,7 @@ function validateCouponBody(body: Record<string, unknown>, partial = false): voi
     if (!partial) {
         for (const field of requiredFields) {
             if (body[field] === undefined || body[field] === null || body[field] === "") {
-                throw new ApiError(400, `จำเป็นต้องระบุ ${field}`);
+                throw new ApiError(400, `Se requiere especificar ${field}.`);
             }
         }
     }
@@ -50,15 +50,15 @@ function validateCouponBody(body: Record<string, unknown>, partial = false): voi
     if (body.discount_type !== undefined) normalizeDiscountType(body.discount_type);
 
     if (body.discount_value !== undefined && Number(body.discount_value) <= 0) {
-        throw new ApiError(400, "discount_value ต้องมากกว่า 0");
+        throw new ApiError(400, "discount_value debe ser mayor que 0.");
     }
 
     if (body.usage_limit_per_user !== undefined && Number(body.usage_limit_per_user) < 1) {
-        throw new ApiError(400, "usage_limit_per_user ต้องมากกว่า 0");
+        throw new ApiError(400, "usage_limit_per_user debe ser mayor que 0.");
     }
 
     if (body.usage_limit_total !== undefined && body.usage_limit_total !== null && Number(body.usage_limit_total) < 1) {
-        throw new ApiError(400, "usage_limit_total ต้องมากกว่า 0");
+        throw new ApiError(400, "usage_limit_total debe ser mayor que 0.");
     }
 }
 
@@ -168,7 +168,7 @@ export const claim = asyncHandler(async (req, res) => {
     const coId = parseId(req.params.co_id, "co_id");
 
     await service.claimCoupon(coId, uId);
-    res.status(201).json({ message: "เก็บคูปองสำเร็จ" });
+    res.status(201).json({ message: "El cupón se guardó con éxito." });
 });
 
 export const myCoupons = asyncHandler(async (req, res) => {
@@ -181,7 +181,7 @@ export const validate = asyncHandler(async (req, res) => {
     const uId = requireUserId(req.userId);
     const { co_code } = req.body ?? {};
 
-    if (!co_code) throw new ApiError(400, "จำเป็นต้องระบุ co_code");
+    if (!co_code) throw new ApiError(400, "Se requiere especificar co_code.");
 
     // validate endpoint ใช้ให้หน้าตะกร้า preview ยอดลด ก่อนกด checkout จริง
     const data = await service.validateCoupon({

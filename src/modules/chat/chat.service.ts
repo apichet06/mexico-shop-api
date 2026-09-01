@@ -744,20 +744,30 @@ export async function adminGetConversations(storeId: number, empId: number): Pro
     const existingStoreTargets = new Set(
         supportRows.map(row => Number(row.st_id) === Number(storeId) ? Number(row.source_store_id) : Number(row.target_store_id))
     );
-    const [contactRows] = await pool.query<(RowDataPacket & {
-        st_id: number;
-        st_company_name: string;
-        st_email: string | null;
-        st_image: string | null;
-        is_platform_store: boolean | 0 | 1 | "0" | "1";
-    })[]>(
-        `SELECT st_id, st_company_name, st_email, st_image, is_platform_store
-         FROM Store
-         WHERE st_id <> ?
-           AND is_platform_store = ?
-         ORDER BY st_company_name ASC`,
-        [storeId, platformStore ? 0 : 1]
-    );
+
+    // ร้านค้า (ผู้ขาย) ติดต่อได้แค่เจ้าของเว็บไซต์เท่านั้น — ฝั่ง platform เองไม่ต้องเห็นรายชื่อร้านค้าทั้งหมดเป็น contact ให้เลือกทัก
+    const [contactRows] = platformStore
+        ? [[] as (RowDataPacket & {
+            st_id: number;
+            st_company_name: string;
+            st_email: string | null;
+            st_image: string | null;
+            is_platform_store: boolean | 0 | 1 | "0" | "1";
+        })[]]
+        : await pool.query<(RowDataPacket & {
+            st_id: number;
+            st_company_name: string;
+            st_email: string | null;
+            st_image: string | null;
+            is_platform_store: boolean | 0 | 1 | "0" | "1";
+        })[]>(
+            `SELECT st_id, st_company_name, st_email, st_image, is_platform_store
+             FROM Store
+             WHERE st_id <> ?
+               AND is_platform_store = 1
+             ORDER BY st_company_name ASC`,
+            [storeId]
+        );
 
     const contacts: ConversationWithBuyerDTO[] = contactRows
         .filter(store => !existingStoreTargets.has(Number(store.st_id)))

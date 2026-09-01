@@ -17,11 +17,11 @@ const upload = multer({
 
     if (file.fieldname === "st_image") {
       if (!allowedImageTypes.includes(file.mimetype)) {
-        return cb(new Error("รองรับเฉพาะไฟล์ JPG, PNG, WEBP"));
+        return cb(new Error("Solo se admiten archivos JPG, PNG, WEBP"));
       }
     } else if (file.fieldname.startsWith("doc_")) {
       if (!allowedDocTypes.includes(file.mimetype)) {
-        return cb(new Error("รองรับเฉพาะไฟล์ PDF, JPG, PNG"));
+        return cb(new Error("Solo se admiten archivos PDF, JPG, PNG"));
       }
     }
     cb(null, true);

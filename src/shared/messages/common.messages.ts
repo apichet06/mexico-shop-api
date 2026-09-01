@@ -1,13 +1,13 @@
 export const CommonMessages = {
     ok: "ok",
-    insertSuccess: "บันทึกข้อมูลสำเร็จ!",
-    updateSuccess: "อัปเดตข้อมูลสำเร็จ!",
-    deleteSuccess: "ลบข้อมูลสำเร็จ!",
-    invalidId: "รหัสที่ระบุไม่ถูกต้อง",
-    notFound: "ไม่พบข้อมูล",
-    used: "ข้อมูลนี้ถูกใช้อยู่ ไม่สามารถลบได้",
+    insertSuccess: "¡Datos guardados con éxito!",
+    updateSuccess: "¡Datos actualizados con éxito!",
+    deleteSuccess: "¡Datos eliminados con éxito!",
+    invalidId: "El ID proporcionado no es válido",
+    notFound: "No se encontraron datos",
+    used: "Este dato está en uso y no se puede eliminar",
 
-    isExits: "ข้อมูลนี้ถูกใช้งานแล้ว",
+    isExits: "Este dato ya está en uso",
     error: "Error",
-    error500: "Server Error!",
+    error500: "¡Error del servidor!",
 } as const;

@@ -16,8 +16,6 @@ export const env = {
     DB_NAME: must("DB_NAME"),
     DB_PORT: Number(process.env.DB_PORT ?? 3306),
 
-    // Public key ใช้อ่าน token จาก Omise Vault; secret key ใช้กับ customer/charge API
-    OMISE_PUBLIC_KEY: process.env.OMISE_PUBLIC_KEY,
-    OMISE_SECRET_KEY: process.env.OMISE_SECRET_KEY,
-    OMISE_RETURN_URI: process.env.OMISE_RETURN_URI,
+    MERCADO_PAGO_ACCESS_TOKEN: process.env.MERCADO_PAGO_ACCESS_TOKEN,
+    MERCADO_PAGO_WEBHOOK_SECRET: process.env.MERCADO_PAGO_WEBHOOK_SECRET,
 };

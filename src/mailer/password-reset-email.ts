@@ -14,20 +14,20 @@ type PasswordResetBrand = {
 
 const employeeBrand: PasswordResetBrand = {
     appName: "Arcana Backoffice",
-    title: "ตั้งรหัสผ่านใหม่",
-    intro: "ใช้ลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่สำหรับบัญชี Backoffice ของคุณ",
-    buttonText: "ตั้งรหัสผ่านใหม่",
-    subject: "Arcana: ตั้งรหัสผ่าน Backoffice ใหม่",
+    title: "Restablecer contraseña",
+    intro: "Usa el siguiente enlace para restablecer la contraseña de tu cuenta de Backoffice.",
+    buttonText: "Restablecer contraseña",
+    subject: "Arcana: restablece tu contraseña de Backoffice",
     accent: "#111827",
     background: "#f4f7fb",
 };
 
 const buyerBrand: PasswordResetBrand = {
     appName: "Arcana Shop",
-    title: "ตั้งรหัสผ่านสมาชิกใหม่",
-    intro: "ใช้ลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่สำหรับบัญชีสมาชิก Arcana Shop ของคุณ",
-    buttonText: "ตั้งรหัสผ่านสมาชิกใหม่",
-    subject: "Arcana Shop: ตั้งรหัสผ่านใหม่",
+    title: "Restablecer contraseña de tu cuenta",
+    intro: "Usa el siguiente enlace para restablecer la contraseña de tu cuenta de Arcana Shop.",
+    buttonText: "Restablecer contraseña",
+    subject: "Arcana Shop: restablece tu contraseña",
     accent: "#1d4ed8",
     background: "#eff6ff",
 };
@@ -36,13 +36,13 @@ function buildPasswordResetText(input: PasswordResetEmailInput, brand: PasswordR
     return [
         brand.title,
         "",
-        input.name ? `สวัสดี ${input.name}` : "สวัสดี",
+        input.name ? `Hola ${input.name}` : "Hola",
         brand.intro,
-        `ลิงก์ตั้งรหัสผ่านใหม่: ${input.resetUrl}`,
-        `ลิงก์นี้จะหมดอายุภายใน ${input.expiresInMinutes} นาที และใช้ได้เพียงครั้งเดียว`,
+        `Enlace para restablecer la contraseña: ${input.resetUrl}`,
+        `Este enlace caduca en ${input.expiresInMinutes} minutos y solo se puede usar una vez.`,
         "",
-        "หากคุณไม่ได้เป็นคนขอ สามารถละเว้นอีเมลนี้ได้",
-        `ติดต่อทีมงาน: ${process.env.SUPPORT_EMAIL ?? process.env.MAIL_FROM_EMAIL ?? "-"}`,
+        "Si no solicitaste este cambio, puedes ignorar este correo.",
+        `Contacto: ${process.env.SUPPORT_EMAIL ?? process.env.MAIL_FROM_EMAIL ?? "-"}`,
     ].join("\n");
 }
 
@@ -65,20 +65,20 @@ function buildPasswordResetHtml(input: PasswordResetEmailInput, brand: PasswordR
                             </tr>
                             <tr>
                                 <td style="padding:30px 32px;">
-                                    <p style="margin:0 0 16px;color:#334155;font-size:15px;">${input.name ? `สวัสดี ${escapeHtml(input.name)}` : "สวัสดี"}</p>
-                                    <p style="margin:0 0 20px;color:#334155;font-size:15px;">เราได้รับคำขอตั้งรหัสผ่านใหม่สำหรับบัญชี <strong>${escapeHtml(input.email)}</strong></p>
+                                    <p style="margin:0 0 16px;color:#334155;font-size:15px;">${input.name ? `Hola ${escapeHtml(input.name)}` : "Hola"}</p>
+                                    <p style="margin:0 0 20px;color:#334155;font-size:15px;">Recibimos una solicitud para restablecer la contraseña de la cuenta <strong>${escapeHtml(input.email)}</strong></p>
                                     <a href="${escapeHtml(input.resetUrl)}" style="display:inline-block;background:${brand.accent};color:#ffffff;text-decoration:none;border-radius:8px;padding:12px 18px;font-size:14px;font-weight:800;">${escapeHtml(brand.buttonText)}</a>
                                     <p style="margin:14px 0 0;color:#64748b;font-size:12px;line-height:1.5;">URL: <a href="${escapeHtml(input.resetUrl)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(input.resetUrl)}</a></p>
 
                                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:24px;border-collapse:separate;border-spacing:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
                                         <tr>
                                             <td style="padding:16px 18px;color:#475569;font-size:13px;">
-                                                ลิงก์นี้จะหมดอายุภายใน <strong>${input.expiresInMinutes} นาที</strong> และใช้ได้เพียงครั้งเดียว หากคุณไม่ได้เป็นคนขอ สามารถละเว้นอีเมลนี้ได้
+                                                Este enlace caduca en <strong>${input.expiresInMinutes} minutos</strong> y solo se puede usar una vez. Si no solicitaste este cambio, puedes ignorar este correo.
                                             </td>
                                         </tr>
                                     </table>
 
-                                    <p style="margin:20px 0 0;color:#64748b;font-size:13px;">หากมีคำถาม กรุณาติดต่อ <a href="mailto:${escapeHtml(contactEmail)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(contactEmail)}</a></p>
+                                    <p style="margin:20px 0 0;color:#64748b;font-size:13px;">Si tienes alguna pregunta, contáctanos en <a href="mailto:${escapeHtml(contactEmail)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${escapeHtml(contactEmail)}</a></p>
                                 </td>
                             </tr>
                         </table>

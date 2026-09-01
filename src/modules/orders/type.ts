@@ -1,4 +1,4 @@
-import type { OmisePaymentMethod } from "../payments/payment.type.js";
+import type { PaymentMethod } from "../payments/payment.type.js";
 import type { CalculateResult } from "../shipping/shipping.type.js";
 
 export type ShippingSelection = {
@@ -15,11 +15,7 @@ export type CreateOrderInput = {
 };
 
 export type CheckoutOrderInput = CreateOrderInput & {
-    payment_method: OmisePaymentMethod;
-    omise_token?: string;
-    omise_source?: string;
-    saved_payment_method_id?: number;
-    save_card?: boolean;
+    payment_method: PaymentMethod;
 };
 
 export type StoreShippingOptions = {
@@ -64,7 +60,7 @@ export type RefundHistoryEntryDTO = {
     amount: number;
     remark: string | null;
     return_tracking: string | null;
-    refund_method: "omise" | "manual" | null;
+    refund_method: "mercado_pago" | "omise" | "manual" | null;
     created_at: string;
     updated_at: string;
     items: RefundItemDTO[];
@@ -137,7 +133,7 @@ export type OrderDTO = {
     refund_id?: number | null;
     refund_amount?: number | null;
     refund_remark?: string | null;
-    refund_method?: "omise" | "manual" | null;
+    refund_method?: "mercado_pago" | "omise" | "manual" | null;
     refund_updated_at?: string | null;
     subtotal: number;
     discount_total: number;
@@ -146,7 +142,6 @@ export type OrderDTO = {
     shipping_sc_id?: number | null;
     shipping_carrier_code?: string | null;
     shipping_carrier_name?: string | null;
-    shipping_zone_code?: string | null;
     tracking_no?: string | null;
     tracking_url?: string | null;
     label_url?: string | null;

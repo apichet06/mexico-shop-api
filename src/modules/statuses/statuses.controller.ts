@@ -15,5 +15,5 @@ export const update = asyncHandler(async (req, res) => {
     };
 
     await statuses.updateStatusLang(Number(s_id), String(lg_code), input);
-    res.status(200).json({ message: "อัปเดตสถานะสำเร็จ" });
+    res.status(200).json({ message: "El estado se actualizó con éxito." });
 });

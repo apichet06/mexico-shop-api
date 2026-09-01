@@ -48,20 +48,20 @@ export const existsCompanyName = asyncHandler(async (req, res) => {
     const { st_company_name } = req.params;
 
     const data = await store.getStoreByCompanyName(String(st_company_name));
-    if (data) return res.status(200).json({ available: false, message: `${CommonMessages.isExits} ${st_company_name} กรุณาเปลี่ยนชื่อใหม่` });
-    res.status(200).json({ available: true, message: "ชื่อร้านค้านี้ยังไม่มีในระบบ สามารถใช้งานได้" });
+    if (data) return res.status(200).json({ available: false, message: `${CommonMessages.isExits} ${st_company_name}. Elige un nombre diferente.` });
+    res.status(200).json({ available: true, message: "Este nombre de tienda está disponible." });
 })
 export const existsEmailStore = asyncHandler(async (req, res) => {
     const { st_email } = req.params;
     const data = await store.getStoreByEmail(String(st_email));
-    if (data) return res.status(200).json({ available: false, message: `${CommonMessages.isExits} ${st_email} กรุณาเปลี่ยนอีเมลใหม่` });
-    res.status(200).json({ available: true, message: "อีเมลนี้ยังไม่มีในระบบ สามารถใช้งานได้" });
+    if (data) return res.status(200).json({ available: false, message: `${CommonMessages.isExits} ${st_email}. Usa otro correo electrónico.` });
+    res.status(200).json({ available: true, message: "Este correo electrónico está disponible." });
 })
 export const existsEmailEmployee = asyncHandler(async (req, res) => {
     const { e_email } = req.params;
     const data = await store.getEmployeeByEmail(String(e_email));
-    if (data) return res.status(200).json({ available: false, message: `${CommonMessages.isExits} ${e_email} กรุณาเปลี่ยนอีเมลใหม่` });
-    res.status(200).json({ available: true, message: "อีเมลนี้ยังไม่มีในระบบ สามารถใช้งานได้" });
+    if (data) return res.status(200).json({ available: false, message: `${CommonMessages.isExits} ${e_email}. Usa otro correo electrónico.` });
+    res.status(200).json({ available: true, message: "Este correo electrónico está disponible." });
 })
 
 export const getLogstore = asyncHandler(async (req, res) => {
@@ -281,7 +281,7 @@ export const createRegister = asyncHandler(async (req, res) => {
         const ownerEmail = String(ownerEmployee?.e_email ?? "").trim();
 
         if (!ownerEmail) {
-            throw new ApiError(400, "กรุณาระบุอีเมล Owner สำหรับส่งลิงก์ยืนยันร้าน");
+            throw new ApiError(400, "Ingresa el correo electrónico del Owner para enviar el enlace de confirmación de la tienda.");
         }
 
         const input = {
@@ -352,7 +352,7 @@ export const createRegister = asyncHandler(async (req, res) => {
 
 export const getSellerConfirmation = asyncHandler(async (req, res) => {
     const token = String(req.params.token ?? "").trim();
-    if (!token) throw new ApiError(400, "ไม่พบ token ยืนยันร้าน");
+    if (!token) throw new ApiError(400, "No se encontró el token de confirmación de la tienda.");
 
     const data = await store.getSellerConfirmationSummary(token);
     res.status(200).json({ data });
@@ -363,11 +363,11 @@ export const confirmSellerConfirmation = asyncHandler(async (req, res) => {
     const pdpaAccepted = req.body?.pdpa_accepted === true || req.body?.pdpa_accepted === "true";
     const password = String(req.body?.password ?? "");
     const confirmPassword = String(req.body?.confirm_password ?? req.body?.confirmPassword ?? "");
-    if (!token) throw new ApiError(400, "ไม่พบ token ยืนยันร้าน");
-    if (!pdpaAccepted) throw new ApiError(400, "กรุณายอมรับนโยบายความเป็นส่วนตัวก่อนยืนยันข้อมูล");
-    if (!password || !confirmPassword) throw new ApiError(400, "กรุณาตั้งรหัสผ่าน Owner");
-    if (password.length < 8) throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
-    if (password !== confirmPassword) throw new ApiError(400, "รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน");
+    if (!token) throw new ApiError(400, "No se encontró el token de confirmación de la tienda.");
+    if (!pdpaAccepted) throw new ApiError(400, "Debes aceptar el aviso de privacidad antes de confirmar la información.");
+    if (!password || !confirmPassword) throw new ApiError(400, "Establece la contraseña del Owner.");
+    if (password.length < 8) throw new ApiError(400, "La contraseña debe tener al menos 8 caracteres.");
+    if (password !== confirmPassword) throw new ApiError(400, "La contraseña y la confirmación no coinciden.");
 
     const ownerPasswordHash = await bcrypt.hash(password, 10);
 
@@ -388,12 +388,12 @@ export const confirmSellerConfirmation = asyncHandler(async (req, res) => {
             console.warn(`[stores] send confirmed registration email failed for store ${storeId}:`, error);
         });
 
-    res.status(200).json({ message: "ยืนยันข้อมูลร้านเรียบร้อยแล้ว", id: storeId });
+    res.status(200).json({ message: "Información de la tienda confirmada con éxito.", id: storeId });
 });
 
 export const resendSellerConfirmation = asyncHandler(async (req, res) => {
     const stId = Number(req.params.st_id);
-    if (!Number.isFinite(stId)) throw new ApiError(400, "รหัสร้านไม่ถูกต้อง");
+    if (!Number.isFinite(stId)) throw new ApiError(400, "El ID de la tienda no es válido.");
 
     const empId = Number(req.empId);
     const recipient = await store.getSellerConfirmationRecipient(stId);
@@ -411,7 +411,7 @@ export const resendSellerConfirmation = asyncHandler(async (req, res) => {
     });
 
     res.status(200).json({
-        message: "ส่งลิงก์ยืนยันร้านซ้ำเรียบร้อยแล้ว",
+        message: "Enlace de confirmación de la tienda reenviado con éxito.",
         confirmation_email: recipient.ownerEmail,
         expires_at: invite.expiresAt.toISOString(),
     });
@@ -419,7 +419,7 @@ export const resendSellerConfirmation = asyncHandler(async (req, res) => {
 
 export const resendStoreEmailVerification = asyncHandler(async (req, res) => {
     const stId = Number(req.params.st_id);
-    if (!Number.isFinite(stId)) throw new ApiError(400, "รหัสร้านไม่ถูกต้อง");
+    if (!Number.isFinite(stId)) throw new ApiError(400, "El ID de la tienda no es válido.");
 
     const empId = Number(req.empId);
     const invite = await store.createStoreEmailVerificationInvite({
@@ -436,7 +436,7 @@ export const resendStoreEmailVerification = asyncHandler(async (req, res) => {
     });
 
     res.status(200).json({
-        message: "ส่งลิงก์ยืนยันอีเมลร้านเรียบร้อยแล้ว",
+        message: "Enlace de verificación de correo de la tienda reenviado con éxito.",
         verification_email: invite.email,
         expires_at: invite.expiresAt.toISOString(),
     });
@@ -444,7 +444,7 @@ export const resendStoreEmailVerification = asyncHandler(async (req, res) => {
 
 export const confirmStoreEmail = asyncHandler(async (req, res) => {
     const token = String(req.params.token ?? "").trim();
-    if (!token) throw new ApiError(400, "ไม่พบ token ยืนยันอีเมลร้าน");
+    if (!token) throw new ApiError(400, "No se encontró el token de verificación de correo de la tienda.");
 
     const data = await store.confirmStoreEmail({
         token,
@@ -453,7 +453,7 @@ export const confirmStoreEmail = asyncHandler(async (req, res) => {
     });
 
     res.status(200).json({
-        message: "ยืนยันอีเมลร้านเรียบร้อยแล้ว",
+        message: "Correo electrónico de la tienda verificado con éxito.",
         data,
     });
 });

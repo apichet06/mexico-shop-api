@@ -1,8 +1,8 @@
 export const UserMessages = {
-    notFound: "ไม่พบข้อมูลผู้ใช้ระบบ หากจำเป็นติดต่อ IT",
-    idNotFound: "ไม่พบรหัสที่ระบุครับ!",
-    undeleteAdmin: "ไม่สามารถลบข้อมูลที่เป็นแอดมินหลักได้!",
-    resign: "บัญชีผู้ใช้นี้พ้นสภาพพนักงานแล้ว กรุณาติดต่อ HR!",
-    repeatEmail: "Email นี้มีอยู่แล้ว!",
-    requiredFields: "จำเป็นต้องระบุ username และ email"
+    notFound: "No se encontró el usuario en el sistema. Si es necesario, contacta a TI",
+    idNotFound: "¡No se encontró el ID especificado!",
+    undeleteAdmin: "¡No se puede eliminar la cuenta del administrador principal!",
+    resign: "¡Esta cuenta de usuario ya no pertenece a un empleado activo. Contacta a RH!",
+    repeatEmail: "¡Este correo electrónico ya existe!",
+    requiredFields: "Se requiere especificar username y email"
 } as const;

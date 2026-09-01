@@ -4,16 +4,8 @@ import type { OrderStatusCode } from "./order-status.service.js";
 import * as service from "./orders.service.js";
 import type { CheckoutOrderInput, ShippingSelection } from "./type.js";
 
-function normalizePaymentMethod(value: unknown): CheckoutOrderInput["payment_method"] {
-    if (
-        value === "card" ||
-        value === "promptpay" ||
-        value === "mobile_banking_kbank" ||
-        value === "mobile_banking_scb"
-    ) {
-        return value;
-    }
-    return "card";
+function normalizePaymentMethod(_value: unknown): CheckoutOrderInput["payment_method"] {
+    return "mercado_pago";
 }
 
 function getRequestLanguage(value: unknown): string {
@@ -73,8 +65,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     const u_id = req.userId;
     const { locb_id, co_code, shipping_selections, selected_ci_ids } = req.body ?? {};
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!locb_id) throw new ApiError(400, "จำเป็นต้องระบุ locb_id (ที่อยู่จัดส่ง)");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!locb_id) throw new ApiError(400, "Se requiere especificar locb_id (dirección de envío).");
 
     // co_code เป็น optional: ถ้าไม่ส่งมา checkout จะสร้าง order แบบไม่ใช้คูปอง
     const order = await service.createOrder({
@@ -94,15 +86,11 @@ export const checkoutOrder = asyncHandler(async (req, res) => {
         co_code,
         shipping_selections,
         payment_method,
-        omise_token,
-        omise_source,
-        saved_payment_method_id,
-        save_card,
         selected_ci_ids,
     } = req.body ?? {};
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!locb_id) throw new ApiError(400, "จำเป็นต้องระบุ locb_id (ที่อยู่จัดส่ง)");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!locb_id) throw new ApiError(400, "Se requiere especificar locb_id (dirección de envío).");
 
     const data = await service.checkoutOrder({
         u_id,
@@ -111,10 +99,6 @@ export const checkoutOrder = asyncHandler(async (req, res) => {
         shipping_selections: normalizeShippingSelections(shipping_selections),
         payment_method: normalizePaymentMethod(payment_method),
         selected_ci_ids: normalizeSelectedCartItemIds(selected_ci_ids),
-        ...(omise_token ? { omise_token: String(omise_token) } : {}),
-        ...(omise_source ? { omise_source: String(omise_source) } : {}),
-        ...(saved_payment_method_id ? { saved_payment_method_id: Number(saved_payment_method_id) } : {}),
-        ...(save_card ? { save_card: true } : {}),
     });
 
     res.status(201).json({ data });
@@ -124,8 +108,8 @@ export const getShippingOptions = asyncHandler(async (req, res) => {
     const u_id = req.userId;
     const locb_id = Number(req.query.locb_id);
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!locb_id || isNaN(locb_id)) throw new ApiError(400, "จำเป็นต้องระบุ locb_id (ที่อยู่จัดส่ง)");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!locb_id || isNaN(locb_id)) throw new ApiError(400, "Se requiere especificar locb_id (dirección de envío).");
 
     const data = await service.getCheckoutShippingOptions({
         u_id,
@@ -138,7 +122,7 @@ export const getShippingOptions = asyncHandler(async (req, res) => {
 export const getOrders = asyncHandler(async (req, res) => {
     const u_id = req.userId;
     const lg_code = getRequestLanguage(req.query.lg_code);
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
 
     const orders = await service.getOrders(u_id, lg_code);
     res.status(200).json({ data: orders });
@@ -147,7 +131,7 @@ export const getOrders = asyncHandler(async (req, res) => {
 export const adminGetOrders = asyncHandler(async (req, res) => {
     const st_id = Number(req.storeId);
     const lg_code = getRequestLanguage(req.query.lg_code);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
 
     const orders = await service.adminGetOrders(st_id, lg_code);
     res.status(200).json({ data: orders });
@@ -155,7 +139,7 @@ export const adminGetOrders = asyncHandler(async (req, res) => {
 
 export const adminGetOrderSummary = asyncHandler(async (req, res) => {
     const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
 
     const summary = await service.adminGetOrderSummary(st_id);
     res.status(200).json({ data: summary });
@@ -163,7 +147,7 @@ export const adminGetOrderSummary = asyncHandler(async (req, res) => {
 
 export const adminGetSalesReport = asyncHandler(async (req, res) => {
     const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
 
     const lg_code = getRequestLanguage(req.query.lg_code);
     const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
@@ -178,7 +162,7 @@ export const adminGetSalesReport = asyncHandler(async (req, res) => {
 
 export const adminGetSalesByProductReport = asyncHandler(async (req, res) => {
     const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
 
     const lg_code = getRequestLanguage(req.query.lg_code);
     const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
@@ -193,7 +177,7 @@ export const adminGetSalesByProductReport = asyncHandler(async (req, res) => {
 
 export const adminGetSalesByCategoryReport = asyncHandler(async (req, res) => {
     const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
 
     const lg_code = getRequestLanguage(req.query.lg_code);
     const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
@@ -208,7 +192,7 @@ export const adminGetSalesByCategoryReport = asyncHandler(async (req, res) => {
 
 export const adminGetSalesByBuyerReport = asyncHandler(async (req, res) => {
     const st_id = Number(req.storeId);
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
 
     const start_date = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
     const end_date = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
@@ -224,11 +208,11 @@ export const adminGetOrderById = asyncHandler(async (req, res) => {
     const or_id = Number(req.params.or_id);
     const lg_code = getRequestLanguage(req.query.lg_code);
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.adminGetOrderById(or_id, st_id, lg_code);
-    if (!order) throw new ApiError(404, "ไม่พบ order");
+    if (!order) throw new ApiError(404, "No se encontró el pedido.");
 
     res.status(200).json({ data: order });
 });
@@ -239,16 +223,16 @@ export const adminApproveRefund = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const note = typeof req.body?.note === "string" ? req.body.note : "";
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.approveRefundRequest(or_id, st_id, note, lg_code);
-    const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("ต้องโอนคืน"));
+    const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("transferirse manualmente"));
     res.status(200).json({
         data: order,
         message: needsManualRefund
-            ? "Omise คืนเงินให้อัตโนมัติไม่ได้ กรุณาโอนคืนลูกค้าด้วยตนเอง"
-            : "อนุมัติคืนเงินสำเร็จ",
+            ? "Mercado Pago no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
+            : "Reembolso aprobado con éxito.",
     });
 });
 
@@ -258,11 +242,11 @@ export const adminConfirmManualRefund = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const note = typeof req.body?.note === "string" ? req.body.note : "";
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.confirmManualRefundRequest(or_id, st_id, note, lg_code);
-    res.status(200).json({ data: order, message: "ยืนยันการโอนคืนลูกค้าแล้ว" });
+    res.status(200).json({ data: order, message: "Se confirmó la transferencia del reembolso al cliente." });
 });
 
 export const adminConfirmReturnReceived = asyncHandler(async (req, res) => {
@@ -271,16 +255,16 @@ export const adminConfirmReturnReceived = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const note = typeof req.body?.note === "string" ? req.body.note : "";
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.confirmReturnReceived(or_id, st_id, note, lg_code);
-    const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("ต้องโอนคืน"));
+    const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("transferirse manualmente"));
     res.status(200).json({
         data: order,
         message: needsManualRefund
-            ? "รับสินค้าคืนแล้ว แต่ Omise คืนเงินอัตโนมัติไม่ได้ กรุณาโอนคืนลูกค้าด้วยตนเอง"
-            : "ยืนยันรับสินค้าคืนและคืนเงินสำเร็จ",
+            ? "Se recibió el producto devuelto, pero Mercado Pago no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
+            : "Se confirmó la recepción del producto devuelto y el reembolso se completó con éxito.",
     });
 });
 
@@ -293,15 +277,15 @@ export const adminUpdateStatus = asyncHandler(async (req, res) => {
 
     const allowedStatusCodes = ["PROCESSING", "PACKED", "READY_TO_SHIP"];
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
-    if (!allowedStatusCodes.includes(statusCode)) throw new ApiError(400, "สถานะที่ต้องการเปลี่ยนไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
+    if (!allowedStatusCodes.includes(statusCode)) throw new ApiError(400, "El estado que deseas cambiar no es válido.");
 
     const order = await service.adminUpdateOrderStatus(or_id, st_id, statusCode as OrderStatusCode, note, lg_code);
     const message =
         statusCode === "READY_TO_SHIP"
-            ? "พร้อมส่งออกแล้ว ระบบสร้าง shipment ให้เรียบร้อย และยังสามารถแก้ไขเลขพัสดุได้"
-            : "เปลี่ยนสถานะคำสั่งซื้อสำเร็จ";
+            ? "El pedido está listo para enviar. El envío se creó correctamente y aún puedes editar el número de guía."
+            : "El estado del pedido se actualizó con éxito.";
     res.status(200).json({ data: order, message });
 });
 
@@ -311,11 +295,11 @@ export const adminUpdateTracking = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const trackingNo = typeof req.body?.tracking_no === "string" ? req.body.tracking_no : "";
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.adminUpdateOrderTracking(or_id, st_id, trackingNo, lg_code);
-    res.status(200).json({ data: order, message: "บันทึกเลขพัสดุสำเร็จ" });
+    res.status(200).json({ data: order, message: "El número de guía se guardó con éxito." });
 });
 
 export const adminCreateShipment = asyncHandler(async (req, res) => {
@@ -323,13 +307,13 @@ export const adminCreateShipment = asyncHandler(async (req, res) => {
     const or_id = Number(req.params.or_id);
     const lg_code = getRequestLanguage(req.query.lg_code);
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.adminCreateOrderShipment(or_id, st_id, lg_code);
     res.status(200).json({
         data: order,
-        message: "พร้อมส่งออกแล้ว ระบบสร้าง shipment ให้เรียบร้อย และยังสามารถแก้ไขเลขพัสดุได้",
+        message: "El pedido está listo para enviar. El envío se creó correctamente y aún puedes editar el número de guía.",
     });
 });
 
@@ -338,13 +322,13 @@ export const adminDevMarkDelivered = asyncHandler(async (req, res) => {
     const or_id = Number(req.params.or_id);
     const lg_code = getRequestLanguage(req.query.lg_code);
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.adminDevMarkOrderDelivered(or_id, st_id, lg_code);
     res.status(200).json({
         data: order,
-        message: "จำลองจัดส่งสำเร็จแล้ว",
+        message: "Se simuló la entrega con éxito.",
     });
 });
 
@@ -354,17 +338,17 @@ export const adminCancelOrder = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
-    if (note.length < 3) throw new ApiError(400, "กรุณาระบุเหตุผลในการยกเลิกคำสั่งซื้อ");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
+    if (note.length < 3) throw new ApiError(400, "Indica el motivo de la cancelación del pedido.");
 
     const order = await service.adminCancelOrder(or_id, st_id, note, lg_code);
-    const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("ต้องโอนคืน"));
+    const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("transferirse manualmente"));
     const message = needsManualRefund
-        ? "ยกเลิกคำสั่งซื้อสำเร็จ แต่ Omise คืนเงินอัตโนมัติไม่ได้ กรุณาโอนคืนลูกค้าด้วยตนเอง"
+        ? "El pedido se canceló con éxito, pero Mercado Pago no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
         : order.refund_status === "succeeded"
-            ? "ยกเลิกคำสั่งซื้อและคืนเงินสำเร็จ"
-            : "ยกเลิกคำสั่งซื้อสำเร็จ";
+            ? "El pedido se canceló y el reembolso se completó con éxito."
+            : "El pedido se canceló con éxito.";
 
     res.status(200).json({ data: order, message });
 });
@@ -375,11 +359,11 @@ export const adminRejectRefund = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const note = typeof req.body?.note === "string" ? req.body.note : "";
 
-    if (!st_id) throw new ApiError(401, "ไม่พบข้อมูลร้านค้า");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!st_id) throw new ApiError(401, "No se encontró la información de la tienda.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.rejectRefundRequest(or_id, st_id, note, lg_code);
-    res.status(200).json({ data: order, message: "ปฏิเสธคำขอคืนเงินแล้ว" });
+    res.status(200).json({ data: order, message: "Se rechazó la solicitud de reembolso." });
 });
 
 export const getOrderById = asyncHandler(async (req, res) => {
@@ -387,11 +371,11 @@ export const getOrderById = asyncHandler(async (req, res) => {
     const or_id = Number(req.params.or_id);
     const lg_code = getRequestLanguage(req.query.lg_code);
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.getOrderById(or_id, u_id, lg_code);
-    if (!order) throw new ApiError(404, "ไม่พบ order");
+    if (!order) throw new ApiError(404, "No se encontró el pedido.");
 
     res.status(200).json({ data: order });
 });
@@ -402,12 +386,12 @@ export const cancelOrder = asyncHandler(async (req, res) => {
     const lg_code = getRequestLanguage(req.query.lg_code);
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
-    if (reason.length < 5) throw new ApiError(400, "กรุณาระบุเหตุผลในการยกเลิกคำสั่งซื้อ");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
+    if (reason.length < 5) throw new ApiError(400, "Indica el motivo de la cancelación del pedido.");
 
     const order = await service.cancelOrder(or_id, u_id, reason, lg_code);
-    res.status(200).json({ data: order, message: "ยกเลิกคำสั่งซื้อสำเร็จ" });
+    res.status(200).json({ data: order, message: "El pedido se canceló con éxito." });
 });
 
 export const confirmOrderReceived = asyncHandler(async (req, res) => {
@@ -415,11 +399,11 @@ export const confirmOrderReceived = asyncHandler(async (req, res) => {
     const or_id = Number(req.params.or_id);
     const lg_code = getRequestLanguage(req.query.lg_code);
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
 
     const order = await service.confirmOrderReceived(or_id, u_id, lg_code);
-    res.status(200).json({ data: order, message: "ยืนยันรับสินค้าสำเร็จ" });
+    res.status(200).json({ data: order, message: "Se confirmó la recepción del pedido con éxito." });
 });
 
 export const requestRefund = asyncHandler(async (req, res) => {
@@ -431,11 +415,11 @@ export const requestRefund = asyncHandler(async (req, res) => {
     const imageFiles = (req.files as Express.Multer.File[]) ?? [];
     const selectedItems = normalizeRefundItemSelections(req.body?.items);
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้");
-    if (!or_id || isNaN(or_id)) throw new ApiError(400, "or_id ไม่ถูกต้อง");
-    if (reason.length < 5) throw new ApiError(400, "กรุณาระบุเหตุผลในการขอคืนเงิน");
-    if (imageFiles.length > 3) throw new ApiError(400, "แนบรูปถ่ายได้สูงสุด 3 รูป");
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
+    if (!or_id || isNaN(or_id)) throw new ApiError(400, "El or_id no es válido.");
+    if (reason.length < 5) throw new ApiError(400, "Indica el motivo de la solicitud de reembolso.");
+    if (imageFiles.length > 3) throw new ApiError(400, "Puedes adjuntar un máximo de 3 fotos.");
 
     const order = await service.requestRefund(or_id, u_id, reason, lg_code, returnTracking, imageFiles, selectedItems);
-    res.status(201).json({ data: order, message: "ส่งคำขอคืนเงินแล้ว" });
+    res.status(201).json({ data: order, message: "Se envió la solicitud de reembolso." });
 });

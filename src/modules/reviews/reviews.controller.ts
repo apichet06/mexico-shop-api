@@ -8,7 +8,7 @@ export const list = asyncHandler(async (req, res) => {
     const page = Math.max(1, Number(req.query.page ?? 1))
     const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 10)))
 
-    if (!pv_id || isNaN(pv_id)) throw new ApiError(400, "จำเป็นต้องระบุ pv_id")
+    if (!pv_id || isNaN(pv_id)) throw new ApiError(400, "Se requiere especificar pv_id.")
 
     const result = await service.getReviews(pv_id, page, limit)
     res.json({ data: result })
@@ -20,8 +20,8 @@ export const checkReviewable = asyncHandler(async (req, res) => {
     const u_id = req.userId
     const pv_id = Number(req.query.pv_id)
 
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้")
-    if (!pv_id) throw new ApiError(400, "จำเป็นต้องระบุ pv_id")
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.")
+    if (!pv_id) throw new ApiError(400, "Se requiere especificar pv_id.")
 
     const reviewableItems = await service.getReviewableItems(u_id, pv_id)
     res.json({ data: { canReview: reviewableItems.length > 0, oi_ids: reviewableItems } })
@@ -30,20 +30,20 @@ export const checkReviewable = asyncHandler(async (req, res) => {
 // POST /api/reviews  (ต้อง BuyerAuth, multipart/form-data)
 export const create = asyncHandler(async (req, res) => {
     const u_id = req.userId
-    if (!u_id) throw new ApiError(401, "ไม่พบข้อมูลผู้ใช้")
+    if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.")
 
     const { pv_id, oi_id, massages, delivery_score, product_score } = req.body ?? {}
 
-    if (!pv_id || !oi_id) throw new ApiError(400, "กรุณากรอกข้อมูลให้ครบถ้วน")
+    if (!pv_id || !oi_id) throw new ApiError(400, "Completa toda la información requerida.")
 
     const reviewMessage = typeof massages === "string" ? massages.trim() : ""
-    if (reviewMessage.length > 500) throw new ApiError(400, "ความคิดเห็นต้องไม่เกิน 500 ตัวอักษร")
+    if (reviewMessage.length > 500) throw new ApiError(400, "El comentario no debe superar los 500 caracteres.")
 
     const dScore = Number(delivery_score)
     const pScore = Number(product_score)
 
     if (dScore < 1 || dScore > 5 || pScore < 1 || pScore > 5) {
-        throw new ApiError(400, "คะแนนต้องอยู่ระหว่าง 1-5")
+        throw new ApiError(400, "La calificación debe estar entre 1 y 5.")
     }
 
     const imageFiles = (req.files as Express.Multer.File[]) ?? []
@@ -58,7 +58,7 @@ export const create = asyncHandler(async (req, res) => {
         imageFiles,
     })
 
-    res.status(201).json({ message: "รีวิวสำเร็จ" })
+    res.status(201).json({ message: "Reseña enviada con éxito." })
 })
 
 
@@ -87,7 +87,7 @@ export const featured = asyncHandler(async (req, res) => {
     if (!ctlId) {
         throw new ApiError(
             400,
-            "website ต้องเป็น arcana หรือ deadstock"
+            "website debe ser arcana o deadstock"
         )
     }
 

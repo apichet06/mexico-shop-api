@@ -41,10 +41,10 @@ export async function ensureRefundReturnTrackingColumn(): Promise<void> {
     return refundColumnsReady;
 }
 
-// เพิ่ม column บอกวิธีคืนเงินจริงใน Refunds ('omise' = คืนผ่าน Omise อัตโนมัติ, 'manual' = ต้องโอนคืนเอง) ถ้ายังไม่มี
+// รองรับ Mercado Pago พร้อมเก็บค่า omise ไว้สำหรับประวัติรายการเก่า
 export async function ensureRefundMethodColumn(): Promise<void> {
-    refundMethodColumnReady ??= pool.query<(RowDataPacket & { column_name: string })[]>(
-        `SELECT COLUMN_NAME AS column_name
+    refundMethodColumnReady ??= pool.query<(RowDataPacket & { column_name: string; column_type: string })[]>(
+        `SELECT COLUMN_NAME AS column_name, COLUMN_TYPE AS column_type
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
            AND TABLE_NAME = 'Refunds'
@@ -52,7 +52,9 @@ export async function ensureRefundMethodColumn(): Promise<void> {
     )
         .then(async ([columns]) => {
             if (columns.length === 0) {
-                await pool.query("ALTER TABLE Refunds ADD COLUMN refund_method ENUM('omise', 'manual') NULL AFTER status");
+                await pool.query("ALTER TABLE Refunds ADD COLUMN refund_method ENUM('mercado_pago', 'manual', 'omise') NULL AFTER status");
+            } else if (!columns[0]?.column_type.includes("mercado_pago")) {
+                await pool.query("ALTER TABLE Refunds MODIFY COLUMN refund_method ENUM('mercado_pago', 'manual', 'omise') NULL");
             }
         })
         .then(() => undefined);
@@ -72,7 +74,7 @@ export async function ensureOrderShipmentLabelColumn(): Promise<void> {
         .then(async ([columns]) => {
             const existing = new Set(columns.map((column) => column.column_name));
             if (!existing.has("label_url")) {
-                // SHIPPOP ส่ง label URL กลับมาหลัง confirm; เก็บแยกจาก tracking_url เพื่อใช้พิมพ์ใบปะหน้ากล่องโดยตรง
+                // ผู้ให้บริการขนส่งส่ง label URL กลับมาหลังสร้าง shipment; เก็บแยกจาก tracking_url เพื่อใช้พิมพ์ใบปะหน้ากล่องโดยตรง
                 await pool.query("ALTER TABLE Orders ADD COLUMN label_url TEXT NULL AFTER tracking_url");
             }
             if (!existing.has("provider_shipping_cost")) {

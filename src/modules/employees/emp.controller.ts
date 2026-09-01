@@ -10,7 +10,7 @@ import crypto from "crypto";
 import { sendEmployeeEmailVerificationEmail, sendEmployeePasswordResetEmail } from "../../mailer/mailer.js";
 
 const PASSWORD_RESET_EXPIRES_MINUTES = 30;
-const FORGOT_PASSWORD_MESSAGE = "หากอีเมลนี้อยู่ในระบบ เราได้ส่งลิงก์ตั้งรหัสผ่านใหม่ให้แล้ว";
+const FORGOT_PASSWORD_MESSAGE = "Si este correo está registrado, te hemos enviado un enlace para restablecer tu contraseña.";
 
 function hashResetToken(token: string): string {
     return crypto.createHash("sha256").update(token).digest("hex");
@@ -33,7 +33,7 @@ function isActiveEmployee(value: unknown): boolean {
 function normalizeUsername(value: unknown): string {
     const username = String(value ?? "").trim();
     if (!/^[A-Za-z0-9._-]{3,30}$/.test(username)) {
-        throw new ApiError(400, "ชื่อผู้ใช้ต้องมี 3-30 ตัว และใช้ได้เฉพาะตัวอักษร ตัวเลข จุด ขีดล่าง หรือขีดกลาง");
+        throw new ApiError(400, "El nombre de usuario debe tener entre 3 y 30 caracteres y solo puede contener letras, números, puntos, guiones bajos o guiones.");
     }
     return username;
 }
@@ -41,7 +41,7 @@ function normalizeUsername(value: unknown): string {
 function normalizePhone(value: unknown): string {
     const phone = String(value ?? "").replace(/\D/g, "");
     if (phone.length !== 10) {
-        throw new ApiError(400, "กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 ตัว");
+        throw new ApiError(400, "Ingresa un número de teléfono de 10 dígitos.");
     }
     return phone;
 }
@@ -58,7 +58,7 @@ export const login = asyncHandler(async (req, res) => {
     const username = String(req.body?.username ?? "").trim();
     const password = String(req.body?.password ?? "");
     if (!username || !password) {
-        throw new ApiError(400, "กรุณาระบุชื่อผู้ใช้และรหัสผ่าน");
+        throw new ApiError(400, "Ingresa el nombre de usuario y la contraseña.");
     }
     const employee = await emp.findByEmpLogin(username);
     if (!employee) {
@@ -92,7 +92,7 @@ export const login = asyncHandler(async (req, res) => {
 export const forgotPassword = asyncHandler(async (req, res) => {
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     if (!email) {
-        throw new ApiError(400, "กรุณาระบุอีเมล");
+        throw new ApiError(400, "Ingresa tu correo electrónico.");
     }
 
     const employee = await emp.findPasswordResetEmployeeByEmail(email);
@@ -130,19 +130,19 @@ export const resetPassword = asyncHandler(async (req, res) => {
     const confirmPassword = String(req.body?.confirmPassword ?? req.body?.confirm_password ?? "");
 
     if (!token || !password || !confirmPassword) {
-        throw new ApiError(400, "ข้อมูลไม่ครบถ้วน");
+        throw new ApiError(400, "Faltan datos por completar.");
     }
     if (password !== confirmPassword) {
-        throw new ApiError(400, "รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน");
+        throw new ApiError(400, "La nueva contraseña y la confirmación no coinciden.");
     }
     if (password.length < 8) {
-        throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+        throw new ApiError(400, "La contraseña debe tener al menos 8 caracteres.");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     await emp.resetPasswordWithToken(hashResetToken(token), hashedPassword);
 
-    res.status(200).json({ message: "ตั้งรหัสผ่านใหม่สำเร็จ กรุณาเข้าสู่ระบบอีกครั้ง" });
+    res.status(200).json({ message: "Contraseña restablecida con éxito. Vuelve a iniciar sesión." });
 });
 
 
@@ -152,7 +152,7 @@ export const createFullAdmin = asyncHandler(async (req, res) => {
     const e_usercode = normalizeUsername(req.body?.e_usercode);
     const password = String(req.body?.e_password ?? "");
     if (password.length < 8) {
-        throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+        throw new ApiError(400, "La contraseña debe tener al menos 8 caracteres.");
     }
     const e_password = await bcrypt.hash(password, 10);
     const created = await emp.CreateEmpAdmins({ e_usercode, e_firstname, e_lastname, e_password, e_phone, e_isActive: "1", e_add_name, e_status, st_id });
@@ -168,11 +168,11 @@ export const updatefullAdmin = asyncHandler(async (req, res) => {
     const employeeId = Number(e_id);
     const e_usercode = normalizeUsername(req.body?.e_usercode);
     if (await emp.isEmployeeUsernameTaken(e_usercode, employeeId)) {
-        throw new ApiError(409, "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
+        throw new ApiError(409, "Este nombre de usuario ya está en uso. Elige otro.");
     }
     const password = String(req.body?.e_password ?? "");
     if (password && password.length < 8) {
-        throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+        throw new ApiError(400, "La contraseña debe tener al menos 8 caracteres.");
     }
     const employee = {
         e_usercode,
@@ -215,7 +215,7 @@ export const resendEmailVerification = asyncHandler(async (req, res) => {
         expiresAt: invite.expiresAt,
     });
 
-    res.status(200).json({ message: "ส่งลิงก์ยืนยันอีเมลสำเร็จ", verification_email: invite.email, expires_at: invite.expiresAt });
+    res.status(200).json({ message: "Enlace de verificación de correo enviado con éxito.", verification_email: invite.email, expires_at: invite.expiresAt });
 });
 
 export const getEmailVerification = asyncHandler(async (req, res) => {
@@ -242,10 +242,10 @@ export const confirmEmailVerification = asyncHandler(async (req, res) => {
 
     if (password || confirmPassword) {
         if (password !== confirmPassword) {
-            throw new ApiError(400, "รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน");
+            throw new ApiError(400, "La nueva contraseña y la confirmación no coinciden.");
         }
         if (password.length < 8) {
-            throw new ApiError(400, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+            throw new ApiError(400, "La contraseña debe tener al menos 8 caracteres.");
         }
         passwordHash = await bcrypt.hash(password, 10);
     }
@@ -257,7 +257,7 @@ export const confirmEmailVerification = asyncHandler(async (req, res) => {
         userAgent: req.get("user-agent") ?? null,
     });
 
-    res.status(200).json({ message: "ยืนยันอีเมลผู้ใช้งานสำเร็จ", data: result });
+    res.status(200).json({ message: "Correo electrónico verificado con éxito.", data: result });
 });
 
 export const changePassword = asyncHandler(async (req, res) => {
@@ -266,11 +266,11 @@ export const changePassword = asyncHandler(async (req, res) => {
     const employeeId = Number(e_id);
 
     if (!employeeId || !PasswordOld || !PasswordNew) {
-        throw new ApiError(400, "ข้อมูลไม่ครบถ้วน");
+        throw new ApiError(400, "Faltan datos por completar.");
     }
 
     if (Number(req.empId) !== employeeId) {
-        throw new ApiError(403, "ไม่มีสิทธิ์เปลี่ยนรหัสผ่านของผู้ใช้นี้");
+        throw new ApiError(403, "No tienes permiso para cambiar la contraseña de este usuario.");
     }
 
     const employee = await emp.findByEmpId(employeeId);

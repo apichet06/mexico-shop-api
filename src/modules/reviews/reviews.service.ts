@@ -64,7 +64,7 @@ export async function createReview(input: CreateReviewInput): Promise<void> {
         await conn.beginTransaction()
 
         // ตรวจว่า oi_id นั้นเป็นของ user นี้และมี pv_id ตรงกัน
-        // เช็ค 3 ทางเพราะ delivered อาจมาจาก: legacy status, shipment_status จาก SHIPPOP, หรือ s_code ใหม่
+        // เช็ค 3 ทางเพราะ delivered อาจมาจาก: legacy status, shipment_status จากผู้ให้บริการขนส่ง, หรือ s_code ใหม่
         // lock order item เพื่อให้ request รีวิว oi_id เดียวกันทำงานทีละรายการ
         const [orderCheck] = await conn.query<RowDataPacket[]>(
             `SELECT oi.oi_id

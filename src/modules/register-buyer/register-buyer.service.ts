@@ -119,7 +119,7 @@ export async function registerBuyer(input: RegisterBuyerInput): Promise<Register
             [u_id]
         );
 
-        if (!rows[0]) throw new ApiError(500, "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        if (!rows[0]) throw new ApiError(500, "Ocurrió un error al guardar la información.");
         return rows[0];
     } catch (err) {
         await conn.rollback();
@@ -134,7 +134,7 @@ export async function facebookAuth(accessToken: string): Promise<AuthResult> {
     const res = await fetch(
         `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`
     );
-    if (!res.ok) throw new ApiError(401, "access_token ไม่ถูกต้องหรือหมดอายุ");
+    if (!res.ok) throw new ApiError(401, "El access_token no es válido o ha caducado.");
 
     const fbUser = (await res.json()) as FacebookUserInfo;
 
@@ -174,7 +174,7 @@ export async function facebookAuth(accessToken: string): Promise<AuthResult> {
             [result.insertId]
         );
 
-        if (!newRows[0]) throw new ApiError(500, "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        if (!newRows[0]) throw new ApiError(500, "Ocurrió un error al guardar la información.");
         return { user: newRows[0], isNew: true };
     } catch (err) {
         await conn.rollback();
@@ -192,11 +192,11 @@ export async function loginBuyer(email: string, password: string): Promise<Regis
     );
 
     const user = rows[0];
-    if (!user) throw new ApiError(401, "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
-    if (user.u_provider !== "LOCAL" || !user.u_password) throw new ApiError(401, "บัญชีนี้ใช้การเข้าสู่ระบบด้วย " + user.u_provider);
+    if (!user) throw new ApiError(401, "El correo electrónico o la contraseña son incorrectos.");
+    if (user.u_provider !== "LOCAL" || !user.u_password) throw new ApiError(401, "Esta cuenta inicia sesión con " + user.u_provider);
 
     const match = await bcrypt.compare(password, user.u_password);
-    if (!match) throw new ApiError(401, "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+    if (!match) throw new ApiError(401, "El correo electrónico o la contraseña son incorrectos.");
 
     await pool.query("UPDATE Users SET u_last_login = ? WHERE u_id = ?", [new Date(), user.u_id]);
 
@@ -293,7 +293,7 @@ export async function resetPasswordWithToken(tokenHash: string, hashedPassword: 
             resetToken.u_provider !== "LOCAL" ||
             !resetToken.u_password
         ) {
-            throw new ApiError(400, "ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว");
+            throw new ApiError(400, "El enlace para restablecer la contraseña no es válido o ha caducado.");
         }
 
         const [result] = await conn.query<ResultSetHeader>(
@@ -303,7 +303,7 @@ export async function resetPasswordWithToken(tokenHash: string, hashedPassword: 
             [hashedPassword, resetToken.u_id, "LOCAL"]
         );
         if (result.affectedRows === 0) {
-            throw new ApiError(404, "ไม่พบข้อมูลผู้ใช้");
+            throw new ApiError(404, "No se encontró la información del usuario.");
         }
 
         await conn.query(
@@ -378,7 +378,7 @@ export async function rotateRefreshToken(
 
         const session = rows[0];
         if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= Date.now()) {
-            throw new ApiError(401, "Refresh token หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+            throw new ApiError(401, "El refresh token ha caducado. Vuelve a iniciar sesión.");
         }
 
         await conn.query(
@@ -442,7 +442,7 @@ export async function getMyProfile(u_id: number): Promise<ProfileDTO> {
         [u_id]
     );
     const user = rows[0];
-    if (!user) throw new ApiError(404, "ไม่พบข้อมูลผู้ใช้");
+    if (!user) throw new ApiError(404, "No se encontró la información del usuario.");
     return user;
 }
 
@@ -472,15 +472,15 @@ export async function changePassword(
     );
 
     const user = rows[0];
-    if (!user) throw new ApiError(404, "ไม่พบข้อมูลผู้ใช้");
+    if (!user) throw new ApiError(404, "No se encontró la información del usuario.");
 
     // บัญชี Google / Facebook ไม่มี password — ไม่สามารถเปลี่ยนได้
     if (user.u_provider !== "LOCAL" || !user.u_password) {
-        throw new ApiError(400, `บัญชีนี้เข้าสู่ระบบด้วย ${user.u_provider} ไม่สามารถเปลี่ยนรหัสผ่านได้`);
+        throw new ApiError(400, `Esta cuenta inicia sesión con ${user.u_provider} y no puede cambiar la contraseña.`);
     }
 
     const match = await bcrypt.compare(current_password, user.u_password);
-    if (!match) throw new ApiError(400, "รหัสผ่านปัจจุบันไม่ถูกต้อง");
+    if (!match) throw new ApiError(400, "La contraseña actual es incorrecta.");
 
     const hashed = await bcrypt.hash(new_password, 10);
     await pool.query("UPDATE Users SET u_password = ? WHERE u_id = ?", [hashed, u_id]);
@@ -562,7 +562,7 @@ export async function setDefaultAddress(u_id: number, locb_id: number): Promise<
             "SELECT locb_id FROM Locations_buyer WHERE locb_id = ? AND u_id = ? LIMIT 1",
             [locb_id, u_id]
         );
-        if (!rows[0]) throw new ApiError(404, "ไม่พบที่อยู่นี้");
+        if (!rows[0]) throw new ApiError(404, "No se encontró esta dirección.");
         await conn.query("UPDATE Locations_buyer SET is_default = 0 WHERE u_id = ?", [u_id]);
         await conn.query("UPDATE Locations_buyer SET is_default = 1 WHERE locb_id = ?", [locb_id]);
         await conn.commit();
@@ -587,7 +587,7 @@ export async function updateMyAddress(
             "SELECT locb_id FROM Locations_buyer WHERE locb_id = ? AND u_id = ? LIMIT 1",
             [locb_id, u_id]
         );
-        if (!rows[0]) throw new ApiError(404, "ไม่พบที่อยู่นี้");
+        if (!rows[0]) throw new ApiError(404, "No se encontró esta dirección.");
 
         if (data.is_default) {
             await conn.query("UPDATE Locations_buyer SET is_default = 0 WHERE u_id = ?", [u_id]);
@@ -623,8 +623,8 @@ export async function deleteAddress(u_id: number, locb_id: number): Promise<void
         [locb_id, u_id]
     );
     const addr = rows[0];
-    if (!addr) throw new ApiError(404, "ไม่พบที่อยู่นี้");
-    if (addr.is_default) throw new ApiError(400, "ไม่สามารถลบที่อยู่หลักได้ กรุณาตั้งที่อยู่อื่นเป็นหลักก่อน");
+    if (!addr) throw new ApiError(404, "No se encontró esta dirección.");
+    if (addr.is_default) throw new ApiError(400, "No puedes eliminar la dirección principal. Establece otra dirección como principal primero.");
     await pool.query("DELETE FROM Locations_buyer WHERE locb_id = ?", [locb_id]);
 }
 
@@ -635,7 +635,7 @@ export async function googleAuth(accessToken: string): Promise<AuthResult> {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (!res.ok) throw new ApiError(401, "access_token ไม่ถูกต้องหรือหมดอายุ");
+    if (!res.ok) throw new ApiError(401, "El access_token no es válido o ha caducado.");
 
     const gUser = (await res.json()) as GoogleUserInfo;
 
@@ -673,7 +673,7 @@ export async function googleAuth(accessToken: string): Promise<AuthResult> {
             [result.insertId]
         );
 
-        if (!newRows[0]) throw new ApiError(500, "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        if (!newRows[0]) throw new ApiError(500, "Ocurrió un error al guardar la información.");
         return { user: newRows[0], isNew: true };
     } catch (err) {
         await conn.rollback();

@@ -350,7 +350,7 @@ export async function requestDocument(
       stl_type: mapStatusToType("REQUEST"),
       stl_actor: eData.e_status + " " + eData.e_firstname,
       stl_action: mapStatusToAction("REQUEST_MORE"),
-      stl_node: note + " - เอกสารที่ต้องขอเพิ่มได้แก่ " + docLabel,
+      stl_node: note + " - Se requieren los siguientes documentos adicionales: " + docLabel,
       stl_timestamp: new Date(),
     };
 
@@ -361,7 +361,7 @@ export async function requestDocument(
       `UPDATE Store SET st_note = ?,st_status = ? , updated_at = ?
               WHERE st_id = ?`,
       [
-        note + " - เอกสารที่ต้องขอเพิ่มได้แก่ " + docLabel,
+        note + " - Se requieren los siguientes documentos adicionales: " + docLabel,
         "REQUEST",
         new Date(),
         st_id,
@@ -414,7 +414,7 @@ export async function updateStoreStatus(
     ) {
       throw new ApiError(
         400,
-        "ร้านนี้ยังรอผู้ฝากขายยืนยันข้อมูลและ PDPA ผ่านลิงก์ invite",
+        "Esta tienda aún espera que el vendedor confirme sus datos y acepte el aviso de privacidad (PDPA) mediante el enlace de invitación.",
       );
     }
 
@@ -518,7 +518,7 @@ export async function UploadDocumetDATA(
       stl_type: mapStatusToType("UPLOAD"),
       stl_actor: eData.e_status + " " + eData.e_firstname,
       stl_action: mapStatusToAction("UPLOAD"),
-      stl_node: "ส่ง - " + docLabel,
+      stl_node: "Enviado - " + docLabel,
       stl_timestamp: new Date(),
     };
 
@@ -585,7 +585,7 @@ export async function createStoreRegister(
     if (existingStoreName) {
       throw new ApiError(
         409,
-        `ชื่อร้านผู้ฝากขาย ${input.st_company_name} ถูกใช้งานแล้ว กรุณาเปลี่ยนชื่อใหม่`,
+        `El nombre de la tienda del consignador ${input.st_company_name} ya está en uso. Elige un nombre diferente.`,
       );
     }
 
@@ -593,7 +593,7 @@ export async function createStoreRegister(
     if (existingStoreEmail) {
       throw new ApiError(
         409,
-        `อีเมลร้านผู้ฝากขาย ${input.st_email} ถูกใช้งานแล้ว กรุณาเปลี่ยนอีเมลใหม่`,
+        `El correo electrónico de la tienda del consignador ${input.st_email} ya está en uso. Usa otro correo electrónico.`,
       );
     }
 
@@ -610,7 +610,7 @@ export async function createStoreRegister(
       if (existingEmployeeEmail) {
         throw new ApiError(
           409,
-          `อีเมลผู้ดูแลร้าน ${email} ถูกใช้งานแล้ว กรุณาเปลี่ยนอีเมลใหม่`,
+          `El correo electrónico del administrador de la tienda ${email} ya está en uso. Usa otro correo electrónico.`,
         );
       }
     }
@@ -620,11 +620,11 @@ export async function createStoreRegister(
     ) {
       throw new ApiError(
         400,
-        "ผู้ใช้งานร้านต้องเป็นผู้ดูแลร้านผู้ฝากขายหรือพนักงานร้านเท่านั้น",
+        "El usuario de la tienda debe ser únicamente administrador del consignador o empleado de la tienda.",
       );
     }
     if (!input.employees.some((emp) => emp.e_status === "Owner")) {
-      throw new ApiError(400, "ร้านต้องมีผู้ดูแลร้านผู้ฝากขายอย่างน้อย 1 คน");
+      throw new ApiError(400, "La tienda debe tener al menos un administrador del consignador.");
     }
     if (
       requiresSellerConfirmation &&
@@ -632,7 +632,7 @@ export async function createStoreRegister(
     ) {
       throw new ApiError(
         400,
-        "การสร้างร้านโดยแอดมินต้องระบุ Primary Owner เพียง 1 คน",
+        "La creación de una tienda por un administrador debe especificar únicamente un Primary Owner.",
       );
     }
 
@@ -765,7 +765,7 @@ export async function createStoreRegister(
       console.log(`Duplicate entry error: ${err}`);
       throw new ApiError(
         409,
-        "ชื่อร้านหรืออีเมลนี้ถูกใช้งานแล้ว กรุณาตรวจสอบอีกครั้ง",
+        "Este nombre de tienda o correo electrónico ya está en uso. Verifícalo de nuevo.",
       );
     }
     console.error(`Error creating store register: ${err}`);
@@ -857,7 +857,7 @@ export async function getSellerConfirmationRecipient(stId: number): Promise<{
   const storeRow = storeRows[0];
   if (!storeRow) throw new ApiError(404, CommonMessages.notFound);
   if (storeRow.st_status !== "PENDING_SELLER_CONFIRMATION") {
-    throw new ApiError(400, "ร้านนี้ไม่อยู่ในสถานะรอผู้ขายยืนยัน");
+    throw new ApiError(400, "Esta tienda no está en estado de espera de confirmación del vendedor.");
   }
 
   const [ownerRows] = await pool.query<(RowDataPacket & { e_email: string })[]>(
@@ -870,7 +870,7 @@ export async function getSellerConfirmationRecipient(stId: number): Promise<{
   );
   const ownerEmail = String(ownerRows[0]?.e_email ?? "").trim();
   if (!ownerEmail) {
-    throw new ApiError(400, "ไม่พบอีเมล Owner สำหรับส่งลิงก์ยืนยันร้าน");
+    throw new ApiError(400, "No se encontró el correo electrónico del Owner para enviar el enlace de confirmación de la tienda.");
   }
 
   return {
@@ -906,7 +906,7 @@ export async function createStoreEmailVerificationInvite(input: {
 
   const email = String(storeRow.st_email ?? "").trim();
   if (!email) {
-    throw new ApiError(400, "ไม่พบอีเมลร้านสำหรับส่งลิงก์ยืนยัน");
+    throw new ApiError(400, "No se encontró el correo electrónico de la tienda para enviar el enlace de verificación.");
   }
 
   const token = crypto.randomBytes(32).toString("hex");
@@ -981,7 +981,7 @@ export async function confirmStoreEmail(input: {
       tokenRow.confirmed_at ||
       new Date(tokenRow.expires_at).getTime() <= Date.now()
     ) {
-      throw new ApiError(400, "ลิงก์ยืนยันอีเมลร้านไม่ถูกต้องหรือหมดอายุแล้ว");
+      throw new ApiError(400, "El enlace de verificación de correo de la tienda no es válido o ha caducado.");
     }
 
     const [storeRows] = await conn.query<
@@ -1002,7 +1002,7 @@ export async function confirmStoreEmail(input: {
     if (String(storeRow.st_email ?? "").trim() !== tokenRow.email) {
       throw new ApiError(
         400,
-        "อีเมลร้านถูกเปลี่ยนแล้ว กรุณาส่งลิงก์ยืนยันใหม่",
+        "El correo electrónico de la tienda ha cambiado. Solicita un nuevo enlace de verificación.",
       );
     }
 
@@ -1024,7 +1024,7 @@ export async function confirmStoreEmail(input: {
         st_id: tokenRow.st_id,
         stl_type: "PENDING",
         stl_actor: "Store",
-        stl_action: "ยืนยันอีเมลร้าน",
+        stl_action: "Correo electrónico de la tienda verificado",
         stl_node: `Store email verified: ${tokenRow.email}`,
         stl_timestamp: confirmedAt,
       },
@@ -1093,7 +1093,7 @@ export async function getSellerConfirmationSummary(
     tokenRow.used_at ||
     new Date(tokenRow.expires_at).getTime() <= Date.now()
   ) {
-    throw new ApiError(400, "ลิงก์ยืนยันร้านไม่ถูกต้องหรือหมดอายุแล้ว");
+    throw new ApiError(400, "El enlace de confirmación de la tienda no es válido o ha caducado.");
   }
 
   const [storeRows] = await pool.query<
@@ -1110,7 +1110,7 @@ export async function getSellerConfirmationSummary(
   if (storeRow.st_status !== "PENDING_SELLER_CONFIRMATION") {
     throw new ApiError(
       400,
-      "ร้านนี้ยืนยันข้อมูลแล้วหรือไม่อยู่ในสถานะรอผู้ขายยืนยัน",
+      "Esta tienda ya confirmó su información o no está en estado de espera de confirmación del vendedor.",
     );
   }
 
@@ -1167,7 +1167,7 @@ export async function confirmSellerStore(input: {
       tokenRow.used_at ||
       new Date(tokenRow.expires_at).getTime() <= Date.now()
     ) {
-      throw new ApiError(400, "ลิงก์ยืนยันร้านไม่ถูกต้องหรือหมดอายุแล้ว");
+      throw new ApiError(400, "El enlace de confirmación de la tienda no es válido o ha caducado.");
     }
 
     const [storeRows] = await conn.query<
@@ -1181,7 +1181,7 @@ export async function confirmSellerStore(input: {
     if (storeRow.st_status !== "PENDING_SELLER_CONFIRMATION") {
       throw new ApiError(
         400,
-        "ร้านนี้ยืนยันข้อมูลแล้วหรือไม่อยู่ในสถานะรอผู้ขายยืนยัน",
+        "Esta tienda ya confirmó su información o no está en estado de espera de confirmación del vendedor.",
       );
     }
     const [ownerRows] = await conn.query<
@@ -1195,7 +1195,7 @@ export async function confirmSellerStore(input: {
     );
     const owner = ownerRows[0];
     if (ownerRows.length !== 1 || !owner) {
-      throw new ApiError(400, "ร้านที่รอยืนยันต้องมี Owner หลักเพียง 1 คน");
+      throw new ApiError(400, "La tienda pendiente de confirmación debe tener un único Owner principal.");
     }
 
     await conn.query(
@@ -1211,7 +1211,7 @@ export async function confirmSellerStore(input: {
       [input.ownerPasswordHash, owner.e_id],
     );
     if (ownerResult.affectedRows !== 1) {
-      throw new ApiError(400, "ร้านที่รอยืนยันต้องมี Owner หลักเพียง 1 คน");
+      throw new ApiError(400, "La tienda pendiente de confirmación debe tener un único Owner principal.");
     }
     await conn.query(
       `UPDATE Store_Seller_Confirmation_Tokens
@@ -1253,7 +1253,7 @@ export async function confirmSellerStore(input: {
         st_id: tokenRow.st_id,
         stl_type: "PENDING",
         stl_actor: "Seller",
-        stl_action: "ผู้ฝากขายยืนยันข้อมูลและ PDPA",
+        stl_action: "El consignador confirmó sus datos y el aviso de privacidad",
         stl_node: `Seller confirmed invite for ${storeRow.st_company_name}`,
         stl_timestamp: new Date(),
       },

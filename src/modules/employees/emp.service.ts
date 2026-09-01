@@ -6,7 +6,7 @@ import { CommonMessages } from "../../shared/messages/common.messages.js";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 
-const MAX_SELLER_STORE_EMPLOYEES = 3;
+const MAX_SELLER_STORE_EMPLOYEES = 10;
 const EMPLOYEE_EMAIL_VERIFICATION_EXPIRES_HOURS = 48;
 
 async function MaxId(): Promise<number> {
@@ -217,7 +217,7 @@ export async function resetPasswordWithToken(tokenHash: string, hashedPassword: 
         );
         const resetToken = rows[0];
         if (!resetToken || resetToken.used_at || new Date(resetToken.expires_at).getTime() <= Date.now()) {
-            throw new ApiError(400, "ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุแล้ว");
+            throw new ApiError(400, "El enlace para restablecer la contraseña no es válido o ha caducado.");
         }
 
         const [employeeResult] = await conn.query<ResultSetHeader>(
@@ -288,7 +288,7 @@ async function countActiveOwners(st_id: number, excludeEmpId?: number): Promise<
 async function assertStoreKeepsActiveOwner(st_id: number, excludeEmpId?: number): Promise<void> {
     const ownerCount = await countActiveOwners(st_id, excludeEmpId);
     if (ownerCount < 1) {
-        throw new ApiError(400, "ร้านต้องมี Owner ที่ใช้งานได้อย่างน้อย 1 คน");
+        throw new ApiError(400, "La tienda debe tener al menos un Owner activo.");
     }
 }
 
@@ -377,24 +377,24 @@ export async function CreateEmpAdmins(input: CreateEmpInput): Promise<{ employee
         await conn.beginTransaction();
         const stId = Number(input.st_id);
         if (!stId) {
-            throw new ApiError(400, "รหัสร้านไม่ถูกต้อง");
+            throw new ApiError(400, "El ID de la tienda no es válido.");
         }
 
         const employeeCount = await countStoreEmployees(stId);
         if (employeeCount >= MAX_SELLER_STORE_EMPLOYEES) {
-            throw new ApiError(400, `เพิ่มผู้ดูแลร้าน/พนักงานได้สูงสุด ${MAX_SELLER_STORE_EMPLOYEES} คน`);
+            throw new ApiError(400, `Solo puedes agregar hasta ${MAX_SELLER_STORE_EMPLOYEES} administradores o empleados por tienda.`);
         }
 
         if (!["Owner", "Staff"].includes(input.e_status)) {
-            throw new ApiError(400, "สิทธิ์ผู้ใช้งานต้องเป็น Admin หรือ User เท่านั้น");
+            throw new ApiError(400, "El rol del usuario debe ser únicamente Admin o User.");
         }
 
         const username = String(input.e_usercode ?? "").trim();
         if (!username) {
-            throw new ApiError(400, "กรุณาระบุชื่อผู้ใช้");
+            throw new ApiError(400, "Ingresa un nombre de usuario.");
         }
         if (await isEmployeeUsernameTaken(username)) {
-            throw new ApiError(409, "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
+            throw new ApiError(409, "Este nombre de usuario ya está en uso. Elige otro.");
         }
         const employee = {
             ...input,
@@ -521,10 +521,10 @@ export async function getEmployeeEmailVerificationSummary(tokenHash: string): Pr
     );
     const token = rows[0];
     if (!token || token.used_at || token.confirmed_at || new Date(token.expires_at).getTime() <= Date.now()) {
-        throw new ApiError(400, "ลิงก์ยืนยันอีเมลไม่ถูกต้องหรือหมดอายุแล้ว");
+        throw new ApiError(400, "El enlace de verificación de correo no es válido o ha caducado.");
     }
     if (token.email !== token.e_email) {
-        throw new ApiError(400, "อีเมลของผู้ใช้งานถูกเปลี่ยนแล้ว กรุณาขอลิงก์ยืนยันใหม่");
+        throw new ApiError(400, "El correo electrónico del usuario ha cambiado. Solicita un nuevo enlace de verificación.");
     }
 
     return {
@@ -571,13 +571,13 @@ export async function confirmEmployeeEmail(input: {
         );
         const token = rows[0];
         if (!token || token.used_at || token.confirmed_at || new Date(token.expires_at).getTime() <= Date.now()) {
-            throw new ApiError(400, "ลิงก์ยืนยันอีเมลไม่ถูกต้องหรือหมดอายุแล้ว");
+            throw new ApiError(400, "El enlace de verificación de correo no es válido o ha caducado.");
         }
         if (token.email !== token.e_email) {
-            throw new ApiError(400, "อีเมลของผู้ใช้งานถูกเปลี่ยนแล้ว กรุณาขอลิงก์ยืนยันใหม่");
+            throw new ApiError(400, "El correo electrónico del usuario ha cambiado. Solicita un nuevo enlace de verificación.");
         }
         if (Boolean(token.requires_password_setup) && !input.passwordHash) {
-            throw new ApiError(400, "กรุณาตั้งรหัสผ่านก่อนยืนยันอีเมล");
+            throw new ApiError(400, "Establece una contraseña antes de verificar el correo electrónico.");
         }
 
         const confirmedAt = new Date();
@@ -654,7 +654,7 @@ export async function UpdateEmpAdmins(e_id: number, input: Partial<UpdateEmpInpu
 
         const nextStatus = input.e_status ?? current.e_status;
         if (!["Owner", "Staff"].includes(nextStatus)) {
-            throw new ApiError(400, "สิทธิ์ผู้ใช้งานต้องเป็น Admin หรือ User เท่านั้น");
+            throw new ApiError(400, "El rol del usuario debe ser únicamente Admin o User.");
         }
         const nextIsActive = input.e_isActive ?? current.e_isActive;
         const willStopBeingActiveOwner = current.e_status === "Owner" && (nextStatus !== "Owner" || !toActiveBoolean(nextIsActive));
@@ -662,7 +662,7 @@ export async function UpdateEmpAdmins(e_id: number, input: Partial<UpdateEmpInpu
         if (willStopBeingActiveOwner) {
             const ownerCount = await countActiveOwners(current.st_id, e_id);
             if (ownerCount < 1) {
-                throw new ApiError(400, "ร้านต้องมี Owner ที่ใช้งานได้อย่างน้อย 1 คน");
+                throw new ApiError(400, "La tienda debe tener al menos un Owner activo.");
             }
         }
 
