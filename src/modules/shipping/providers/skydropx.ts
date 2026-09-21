@@ -280,7 +280,7 @@ export async function quoteSkydropxRates(input: SkydropxQuoteInput): Promise<Sky
   if (!id) throw new ApiError(502, "Skydropx ไม่ส่ง quotation id กลับมา", { provider: "skydropx", raw: created });
 
   let latest: unknown = created;
-  const attempts = Math.min(Math.max(Number(process.env.SKYDROPX_QUOTE_POLL_ATTEMPTS) || 4, 1), 10);
+  const attempts = Math.min(Math.max(Number(process.env.SKYDROPX_QUOTE_POLL_ATTEMPTS) || 10, 1), 10);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const rates = parseRates(latest, id);
     const completed = record(record(latest).data).is_completed ?? record(latest).is_completed;
