@@ -49,5 +49,7 @@ node scripts/create-conekta-webhook.mjs https://your-api.example/api/webhooks/co
 The script checks that the configured test public key matches Conekta, that
 the endpoint responds, and that a webhook for the URL does not already exist.
 Use `node scripts/check-conekta-webhook.mjs` to inspect the registered webhook.
+Add `--test` to ask Conekta to send a signed test ping, then use `--events` to
+check its delivery status and HTTP response in Conekta's event log.
 For a local signature check, run `npm run build` followed by
 `node scripts/test-conekta-webhook.mjs`.
