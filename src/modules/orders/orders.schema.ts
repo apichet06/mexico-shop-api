@@ -41,7 +41,7 @@ export async function ensureRefundReturnTrackingColumn(): Promise<void> {
     return refundColumnsReady;
 }
 
-// รองรับ Mercado Pago พร้อมเก็บค่า omise ไว้สำหรับประวัติรายการเก่า
+// รองรับ Conekta พร้อมเก็บค่าเดิมไว้สำหรับประวัติรายการเก่า
 export async function ensureRefundMethodColumn(): Promise<void> {
     refundMethodColumnReady ??= pool.query<(RowDataPacket & { column_name: string; column_type: string })[]>(
         `SELECT COLUMN_NAME AS column_name, COLUMN_TYPE AS column_type
@@ -52,9 +52,9 @@ export async function ensureRefundMethodColumn(): Promise<void> {
     )
         .then(async ([columns]) => {
             if (columns.length === 0) {
-                await pool.query("ALTER TABLE Refunds ADD COLUMN refund_method ENUM('mercado_pago', 'manual', 'omise') NULL AFTER status");
-            } else if (!columns[0]?.column_type.includes("mercado_pago")) {
-                await pool.query("ALTER TABLE Refunds MODIFY COLUMN refund_method ENUM('mercado_pago', 'manual', 'omise') NULL");
+                await pool.query("ALTER TABLE Refunds ADD COLUMN refund_method ENUM('conekta', 'manual', 'omise') NULL AFTER status");
+            } else if (!columns[0]?.column_type.includes("'conekta'")) {
+                await pool.query(`ALTER TABLE Refunds MODIFY COLUMN refund_method ${columns[0]!.column_type.slice(0, -1)},'conekta') NULL`);
             }
         })
         .then(() => undefined);
@@ -99,6 +99,7 @@ export async function ensureOrderShipmentTables(): Promise<void> {
                 tracking_no VARCHAR(120) NULL,
                 tracking_url TEXT NULL,
                 label_url TEXT NULL,
+                provider_shipment_id VARCHAR(80) NULL,
                 sender_name VARCHAR(255) NOT NULL,
                 sender_phone VARCHAR(60) NULL,
                 sender_email VARCHAR(255) NULL,
@@ -122,6 +123,14 @@ export async function ensureOrderShipmentTables(): Promise<void> {
                 KEY idx_order_shipments_location (loc_id)
             )
         `);
+        const [shipmentColumns] = await pool.query<(RowDataPacket & { COLUMN_NAME: string })[]>(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Order_shipments'
+               AND COLUMN_NAME = 'provider_shipment_id'`
+        );
+        if (!shipmentColumns.length) {
+            await pool.query("ALTER TABLE Order_shipments ADD COLUMN provider_shipment_id VARCHAR(80) NULL AFTER label_url");
+        }
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS Order_shipment_items (

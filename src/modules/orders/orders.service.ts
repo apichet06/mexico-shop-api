@@ -6,10 +6,11 @@ import type { AdminOrderDTO, AdminOrderSummaryDTO, AdminSalesByBuyerReportDTO, A
 import * as couponService from "../coupons/coupon.service.js";
 import * as shippingService from "../shipping/shipping.service.js";
 import type { CalculateResult } from "../shipping/shipping.type.js";
-import { chargeAndRecordPayment, createMercadoPagoRefund } from "../payments/payment.service.js";
+import { chargeAndRecordPayment, createConektaRefund, handleConektaOrder } from "../payments/payment.service.js";
 import type { PaymentResultDTO } from "../payments/payment.type.js";
 import {
     createSkydropxShipment,
+    getSkydropxShipmentLabel,
     getSkydropxTracking,
     mapSkydropxShipmentStatus,
 } from "../shipping/providers/skydropx.js";
@@ -204,7 +205,7 @@ const orderItemsSelectSql = `
 `;
 
 const ADMIN_ALL_STORE_ID = 1;
-const PAYMENT_EXPIRE_MINUTES = Number(process.env.ORDER_PAYMENT_EXPIRE_MINUTES ?? 1440);
+const PAYMENT_EXPIRE_MINUTES = Number(process.env.ORDER_PAYMENT_EXPIRE_MINUTES ?? 4320);
 let expirationJobStarted = false;
 
 // เช็คจาก Store.is_platform_store จริง แทนการอิง ADMIN_ALL_STORE_ID (=1) ตรงๆ เพราะ st_id ที่เป็น platform อาจไม่ใช่ 1 เสมอไปในอนาคต
@@ -370,14 +371,14 @@ async function notifyManyOrderEvents(orders: OrderNotificationOptions[]) {
     }
 }
 
-// แจ้งเตือน platform store เมื่อ Mercado Pago คืนเงินไม่สำเร็จและต้องโอนคืนเอง
+// แจ้งเตือน platform store เมื่อ Conekta คืนเงินไม่สำเร็จและต้องโอนคืนเอง
 async function notifyPlatformManualRefundNeeded(order: Pick<OrderDTO, "or_id" | "order_no" | "st_company_name">) {
     try {
         await notificationService.NotifyPlatformStores({
             target_type: "STORE",
             type: "order:manual_refund_needed",
             title: "Se requiere un reembolso manual",
-            message: `No se pudo reembolsar el pedido ${order.order_no}${order.st_company_name ? ` de la tienda ${order.st_company_name}` : ""} mediante Mercado Pago. Debe transferir el reembolso al cliente manualmente.`,
+            message: `No se pudo reembolsar el pedido ${order.order_no}${order.st_company_name ? ` de la tienda ${order.st_company_name}` : ""} mediante Conekta. Debe transferir el reembolso al cliente manualmente.`,
             action_url: getStoreOrderActionUrl(order),
             ref_type: "ORDER",
             ref_id: order.or_id,
@@ -391,9 +392,10 @@ async function notifyPlatformManualRefundNeeded(order: Pick<OrderDTO, "or_id" | 
 
 // คำนวณเวลาหมดอายุการชำระเงินของ order pending
 function buildPaymentExpiresAt(): Date {
+    // Conekta HostedPayment requires a checkout validity of at least two days.
     const minutes = Number.isFinite(PAYMENT_EXPIRE_MINUTES) && PAYMENT_EXPIRE_MINUTES > 0
-        ? PAYMENT_EXPIRE_MINUTES
-        : 15;
+        ? Math.max(PAYMENT_EXPIRE_MINUTES, 2885)
+        : 4320;
     return new Date(Date.now() + minutes * 60 * 1000);
 }
 
@@ -1538,8 +1540,8 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
         await reserveInventoryForOrderItems(conn, reservationItems);
         await createShipmentGroupsForOrders(conn, createdOrderIds);
 
-        const [orderRows] = await conn.query<(RowDataPacket & Pick<OrderDTO, "or_id" | "order_no" | "grand_total">)[]>(
-            "SELECT or_id, order_no, grand_total FROM Orders WHERE or_id IN (?) ORDER BY or_id ASC",
+        const [orderRows] = await conn.query<(RowDataPacket & Pick<OrderDTO, "or_id" | "order_no" | "grand_total" | "payment_expires_at">)[]>(
+            "SELECT or_id, order_no, grand_total, payment_expires_at FROM Orders WHERE or_id IN (?) ORDER BY or_id ASC",
             [createdOrderIds]
         );
 
@@ -1550,6 +1552,7 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
                 or_id: Number(order.or_id),
                 order_no: String(order.order_no),
                 grand_total: Number(order.grand_total),
+                payment_expires_at: order.payment_expires_at,
             })),
         });
 
@@ -2397,6 +2400,26 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
     const order = orderRows[0];
     if (!order) return null;
 
+    if (!order.label_url && process.env.SKYDROPX_MOCK !== "true") {
+        const [pendingLabels] = await pool.query<(RowDataPacket & { os_id: number; provider_shipment_id: string })[]>(
+            `SELECT os_id, provider_shipment_id FROM Order_shipments
+             WHERE or_id = ? AND provider_shipment_id IS NOT NULL
+               AND tracking_no IS NOT NULL AND label_url IS NULL`,
+            [or_id]
+        );
+        for (const shipment of pendingLabels) {
+            try {
+                const labelUrl = await getSkydropxShipmentLabel(shipment.provider_shipment_id);
+                if (!labelUrl) continue;
+                await pool.query("UPDATE Order_shipments SET label_url = ? WHERE os_id = ? AND label_url IS NULL", [labelUrl, shipment.os_id]);
+                await pool.query("UPDATE Orders SET label_url = ? WHERE or_id = ? AND label_url IS NULL", [labelUrl, or_id]);
+                order.label_url = labelUrl;
+            } catch {
+                // Keep the order detail available while Skydropx is still processing the label.
+            }
+        }
+    }
+
     const [itemRows] = await pool.query<(RowDataPacket & OrderItemDTO)[]>(
         `${orderItemsSelectSql} WHERE oi.or_id = ? ORDER BY oi.oi_id ASC`,
         [lg_code, or_id]
@@ -2664,7 +2687,7 @@ async function getRefundHistory(or_id: number): Promise<RefundHistoryEntryDTO[]>
         amount: number;
         remark: string | null;
         return_tracking: string | null;
-        refund_method: "mercado_pago" | "omise" | "manual" | null;
+        refund_method: "conekta" | "omise" | "manual" | null;
         created_at: string;
         updated_at: string;
     })[]>(
@@ -2919,7 +2942,7 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
     }
 }
 
-// admin อนุมัติคำขอคืนเงินและพยายาม refund ผ่าน Mercado Pago อัตโนมัติ
+// admin อนุมัติคำขอคืนเงินและพยายาม refund ผ่าน Conekta อัตโนมัติ
 export async function approveRefundRequest(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
@@ -2968,22 +2991,17 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
         if (!refund.payment_ref) throw new ApiError(400, "No se encontró la referencia de pago para procesar el reembolso.");
 
         try {
-            await createMercadoPagoRefund({
-                paymentId: refund.payment_ref,
+            await createConektaRefund({
+                orderId: refund.payment_ref,
                 amount: Number(refund.amount),
-                metadata: {
-                    order_id: String(refund.or_id),
-                    order_no: refund.order_no,
-                    refund_id: String(refund.refund_id),
-                },
             });
         } catch (err) {
             const details = err instanceof ApiError ? err.details as { code?: string; message?: string } : null;
-            const providerMessage = details?.message || (err instanceof Error ? err.message : "No se pudo procesar el reembolso a través de Mercado Pago.");
+            const providerMessage = details?.message || (err instanceof Error ? err.message : "No se pudo procesar el reembolso a través de Conekta.");
             const failureRemark = [
                 note.trim(),
-                `El reembolso a través de Mercado Pago no se completó: ${providerMessage}`,
-                "Debe transferirse manualmente al cliente porque Mercado Pago rechazó o no admite el reembolso de este pedido.",
+                `El reembolso a través de Conekta no se completó: ${providerMessage}`,
+                "Debe transferirse manualmente al cliente porque Conekta rechazó o no admite el reembolso de este pedido.",
             ].filter(Boolean).join(" | ");
 
             await conn.query(
@@ -3010,12 +3028,12 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
             return order;
         }
 
-        const remark = [note.trim(), "Reembolso realizado con éxito a través de Mercado Pago."]
+        const remark = [note.trim(), "Reembolso realizado con éxito a través de Conekta."]
             .filter(Boolean)
             .join(" | ");
 
         await conn.query(
-            "UPDATE Refunds SET status = 'succeeded', refund_method = 'mercado_pago', remark = ?, updated_at = ? WHERE refund_id = ?",
+            "UPDATE Refunds SET status = 'succeeded', refund_method = 'conekta', remark = ?, updated_at = ? WHERE refund_id = ?",
             [remark || "Approved refund", new Date(), refund.refund_id]
         );
 
@@ -3057,7 +3075,7 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
 
 // admin ยกเลิกคำสั่งซื้อที่ยังรอชำระเงิน (PENDING) หรือชำระเงินแล้ว (CONFIRMED)
 // PENDING: ยังไม่มีการชำระเงินจริง แค่ยกเลิกและปล่อย stock ที่จองไว้กลับคืน
-// CONFIRMED: ชำระเงินแล้ว ต้องคืนเงินให้ลูกค้าผ่าน Mercado Pago อัตโนมัติด้วย
+// CONFIRMED: ชำระเงินแล้ว ต้องคืนเงินให้ลูกค้าผ่าน Conekta อัตโนมัติด้วย
 // ถ้าคืนอัตโนมัติไม่ได้ จะปิดออเดอร์เป็นยกเลิกไว้ก่อน แล้วให้ admin ยืนยันโอนคืนเองภายหลัง
 export async function adminCancelOrder(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
@@ -3153,23 +3171,18 @@ export async function adminCancelOrder(or_id: number, st_id: number, note = "", 
 
         let refundSucceeded = true;
         try {
-            await createMercadoPagoRefund({
-                paymentId: paymentRef,
+            await createConektaRefund({
+                orderId: paymentRef,
                 amount: Number(order.grand_total),
-                metadata: {
-                    order_id: String(or_id),
-                    order_no: order.order_no,
-                    refund_id: String(refundRes.insertId),
-                },
             });
         } catch (err) {
             refundSucceeded = false;
             const details = err instanceof ApiError ? err.details as { code?: string; message?: string } : null;
-            const providerMessage = details?.message || (err instanceof Error ? err.message : "No se pudo procesar el reembolso a través de Mercado Pago.");
+            const providerMessage = details?.message || (err instanceof Error ? err.message : "No se pudo procesar el reembolso a través de Conekta.");
             const failureRemark = [
                 trimmedNote,
-                `El reembolso a través de Mercado Pago no se completó: ${providerMessage}`,
-                "Debe transferirse manualmente al cliente porque Mercado Pago rechazó o no admite el reembolso de este pedido.",
+                `El reembolso a través de Conekta no se completó: ${providerMessage}`,
+                "Debe transferirse manualmente al cliente porque Conekta rechazó o no admite el reembolso de este pedido.",
             ].filter(Boolean).join(" | ");
 
             await conn.query(
@@ -3179,9 +3192,9 @@ export async function adminCancelOrder(or_id: number, st_id: number, note = "", 
         }
 
         if (refundSucceeded) {
-            const remark = [trimmedNote, "Reembolso realizado con éxito a través de Mercado Pago."].filter(Boolean).join(" | ");
+            const remark = [trimmedNote, "Reembolso realizado con éxito a través de Conekta."].filter(Boolean).join(" | ");
             await conn.query(
-                "UPDATE Refunds SET status = 'succeeded', refund_method = 'mercado_pago', remark = ?, updated_at = ? WHERE refund_id = ?",
+                "UPDATE Refunds SET status = 'succeeded', refund_method = 'conekta', remark = ?, updated_at = ? WHERE refund_id = ?",
                 [remark, new Date(), refundRes.insertId]
             );
         }
@@ -3600,10 +3613,11 @@ async function createShipmentForOrder(
              SET tracking_no = ?,
                  tracking_url = ?,
                  label_url = ?,
+                 provider_shipment_id = ?,
                  status = ?,
                  updated_at = ?
              WHERE os_id = ?`,
-            [displayTrackingNo, result.trackingUrl, result.labelUrl, result.shipmentStatus, new Date(), shipment.os_id]
+            [displayTrackingNo, result.trackingUrl, result.labelUrl, result.providerShipmentId, result.shipmentStatus, new Date(), shipment.os_id]
         );
 
         trackingNos.push(displayTrackingNo);
@@ -4074,23 +4088,17 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
         if (!refund.payment_ref) throw new ApiError(400, "No se encontró la referencia de pago para procesar el reembolso.");
 
         try {
-            await createMercadoPagoRefund({
-                paymentId: refund.payment_ref,
+            await createConektaRefund({
+                orderId: refund.payment_ref,
                 amount: Number(refund.amount),
-                metadata: {
-                    order_id: String(refund.or_id),
-                    order_no: refund.order_no,
-                    refund_id: String(refund.refund_id),
-                    return_tracking: refund.return_tracking,
-                },
             });
         } catch (err) {
             const details = err instanceof ApiError ? err.details as { code?: string; message?: string } : null;
-            const providerMessage = details?.message || (err instanceof Error ? err.message : "No se pudo procesar el reembolso a través de Mercado Pago.");
+            const providerMessage = details?.message || (err instanceof Error ? err.message : "No se pudo procesar el reembolso a través de Conekta.");
             const failureRemark = [
                 note.trim() ? `Producto devuelto recibido: ${note.trim()}` : "Producto devuelto recibido",
-                `El reembolso a través de Mercado Pago no se completó: ${providerMessage}`,
-                "Debe transferirse manualmente al cliente porque Mercado Pago rechazó o no admite el reembolso de este pedido.",
+                `El reembolso a través de Conekta no se completó: ${providerMessage}`,
+                "Debe transferirse manualmente al cliente porque Conekta rechazó o no admite el reembolso de este pedido.",
             ].filter(Boolean).join(" | ");
 
             await conn.query(
@@ -4119,11 +4127,11 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
 
         const remark = [
             note.trim() ? `Producto devuelto recibido: ${note.trim()}` : "Producto devuelto recibido",
-            "Reembolso realizado con éxito a través de Mercado Pago.",
+            "Reembolso realizado con éxito a través de Conekta.",
         ].filter(Boolean).join(" | ");
 
         await conn.query(
-            "UPDATE Refunds SET status = 'succeeded', refund_method = 'mercado_pago', remark = ?, updated_at = ? WHERE refund_id = ?",
+            "UPDATE Refunds SET status = 'succeeded', refund_method = 'conekta', remark = ?, updated_at = ? WHERE refund_id = ?",
             [remark, new Date(), refund.refund_id]
         );
 
@@ -4207,7 +4215,7 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
             throw new ApiError(400, "Esta solicitud de reembolso no corresponde a una transferencia manual.");
         }
 
-        // ร้านที่ไม่ใช่ platform เองไม่ได้ถือเงินลูกค้าจริง (platform เป็น merchant of record ผ่าน Mercado Pago)
+        // ร้านที่ไม่ใช่ platform เองไม่ได้ถือเงินลูกค้าจริง (platform เป็น merchant of record ผ่าน Conekta)
         // จึงต้องให้ผู้ดูแลระบบ platform เท่านั้นที่ยืนยันว่าโอนเงินคืนเองแล้วสำหรับ order ของร้านอื่น
         if (!(await isPlatformStore(refund.order_st_id)) && !(await isPlatformStore(st_id))) {
             throw new ApiError(403, "Solo un administrador de la plataforma puede confirmar la transferencia de reembolso para esta tienda.");
@@ -4284,6 +4292,26 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
 export async function expirePendingPaymentOrders(limit = 50): Promise<number> {
     await ensureInventoryReservationTable();
     await ensureOrderShipmentLabelColumn();
+
+    // Check Conekta first so a missed webhook cannot cancel an already paid order.
+    const [pendingPayments] = await pool.query<(RowDataPacket & { payment_ref: string })[]>(
+        `SELECT DISTINCT p.payment_ref
+         FROM Payments p
+         INNER JOIN Payment_orders po ON po.pay_id = p.pay_id
+         INNER JOIN Orders o ON o.or_id = po.or_id
+         INNER JOIN Status s ON s.s_id = o.s_id
+         WHERE p.payment_method = 'conekta'
+           AND p.payment_status = 'pending'
+           AND p.payment_ref IS NOT NULL
+           AND s.s_code = 'PENDING'
+           AND o.payment_expires_at <= NOW()
+         ORDER BY p.payment_ref
+         LIMIT ?`,
+        [limit]
+    );
+    for (const payment of pendingPayments) {
+        await handleConektaOrder(payment.payment_ref);
+    }
 
     const conn = await pool.getConnection();
     try {

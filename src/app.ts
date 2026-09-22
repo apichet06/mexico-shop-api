@@ -59,7 +59,14 @@ export function createApp() {
   };
 
   app.use(cors(corsOptions));
-  app.use(express.json({ limit: "10mb" }));
+  app.use(express.json({
+    limit: "10mb",
+    verify: (req, _res, body) => {
+      if (req.url?.startsWith("/api/webhooks/conekta")) {
+        (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(body);
+      }
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
   app.use(requestLogger);
 

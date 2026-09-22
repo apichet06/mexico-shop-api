@@ -1,6 +1,6 @@
-export type PaymentMethod = "mercado_pago";
+export type PaymentMethod = "conekta";
 
-export type MercadoPagoCheckoutInput = {
+export type ConektaCheckoutInput = {
     u_id: number;
     order_ids: number[];
     payment_method: PaymentMethod;
@@ -16,27 +16,13 @@ export type PaymentResultDTO = {
     order_ids: number[];
 };
 
-export type MercadoPagoPreferenceResponse = {
-    id?: string;
-    init_point?: string;
-    sandbox_init_point?: string;
-};
-
-export type MercadoPagoPaymentResponse = {
-    id?: number | string;
-    status?: string;
-    status_detail?: string;
-    external_reference?: string | null;
-    transaction_amount?: number;
-};
-
-export type MercadoPagoPaymentSearchResponse = {
-    results?: MercadoPagoPaymentResponse[];
-};
-
-export type MercadoPagoRefundResponse = {
-    id?: number | string;
-    payment_id?: number | string;
-    amount?: number;
-    status?: string;
+export type ConektaOrderResponse = {
+    id: string;
+    amount: number;
+    currency: string;
+    payment_status: string | null;
+    livemode: boolean;
+    metadata?: { payment_no?: string };
+    checkout?: { url?: string | null };
+    charges?: { data?: { payment_method?: { expires_at?: number | null } }[] };
 };

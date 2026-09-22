@@ -4,5 +4,5 @@ import * as controller from "./payment.controller.js";
 
 export const paymentRouter = Router();
 
-paymentRouter.post("/mercado-pago/checkout", BuyerAuth, controller.createMercadoPagoCheckout);
-paymentRouter.post("/mercado-pago/sync", BuyerAuth, controller.syncMercadoPagoPayment);
+paymentRouter.post("/conekta/checkout", BuyerAuth, controller.createConektaCheckout);
+paymentRouter.post("/conekta/sync", BuyerAuth, controller.syncConektaPayment);

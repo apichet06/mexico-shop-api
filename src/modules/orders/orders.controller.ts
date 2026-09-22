@@ -5,7 +5,7 @@ import * as service from "./orders.service.js";
 import type { CheckoutOrderInput, ShippingSelection } from "./type.js";
 
 function normalizePaymentMethod(_value: unknown): CheckoutOrderInput["payment_method"] {
-    return "mercado_pago";
+    return "conekta";
 }
 
 function getRequestLanguage(value: unknown): string {
@@ -231,7 +231,7 @@ export const adminApproveRefund = asyncHandler(async (req, res) => {
     res.status(200).json({
         data: order,
         message: needsManualRefund
-            ? "Mercado Pago no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
+            ? "Conekta no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
             : "Reembolso aprobado con éxito.",
     });
 });
@@ -263,7 +263,7 @@ export const adminConfirmReturnReceived = asyncHandler(async (req, res) => {
     res.status(200).json({
         data: order,
         message: needsManualRefund
-            ? "Se recibió el producto devuelto, pero Mercado Pago no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
+            ? "Se recibió el producto devuelto, pero Conekta no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
             : "Se confirmó la recepción del producto devuelto y el reembolso se completó con éxito.",
     });
 });
@@ -345,7 +345,7 @@ export const adminCancelOrder = asyncHandler(async (req, res) => {
     const order = await service.adminCancelOrder(or_id, st_id, note, lg_code);
     const needsManualRefund = order.refund_status === "failed" && Boolean(order.refund_remark?.includes("transferirse manualmente"));
     const message = needsManualRefund
-        ? "El pedido se canceló con éxito, pero Mercado Pago no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
+        ? "El pedido se canceló con éxito, pero Conekta no pudo procesar el reembolso automáticamente. Transfiere el reembolso al cliente manualmente."
         : order.refund_status === "succeeded"
             ? "El pedido se canceló y el reembolso se completó con éxito."
             : "El pedido se canceló con éxito.";

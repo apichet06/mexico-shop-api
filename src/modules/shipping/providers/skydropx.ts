@@ -91,6 +91,18 @@ function stringValue(...values: unknown[]) {
   return null;
 }
 
+function collectFieldErrors(value: unknown, field: string, messages: string[]) {
+  if (typeof value === "string" && value.trim()) {
+    messages.push(field ? `${field}: ${value.trim()}` : value.trim());
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectFieldErrors(item, field, messages);
+  } else if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      collectFieldErrors(item, field ? `${field}.${key}` : key, messages);
+    }
+  }
+}
+
 function collectMessages(value: unknown, messages: string[] = []): string[] {
   if (!value || typeof value !== "object") return messages;
   if (Array.isArray(value)) {
@@ -98,6 +110,7 @@ function collectMessages(value: unknown, messages: string[] = []): string[] {
     return messages;
   }
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "errors") collectFieldErrors(item, "", messages);
     if (["message", "error", "error_description", "error_message_detail", "detail"].includes(key)) {
       if (typeof item === "string" && item.trim()) messages.push(item.trim());
       else if (Array.isArray(item)) messages.push(...item.map(String).filter(Boolean));
@@ -183,7 +196,7 @@ function toAddress(address: ShippingAddress, includeContact = false) {
     company: address.name,
     phone: address.tel.replace(/\D/g, "").slice(-10),
     email: address.email?.trim() || process.env.SKYDROPX_DEFAULT_EMAIL?.trim() || "no-reply@example.com",
-    reference: address.address,
+    reference: Array.from(address.address.trim()).slice(0, 30).join("") || "Sin referencia",
   };
 }
 
@@ -294,10 +307,31 @@ export async function quoteSkydropxRates(input: SkydropxQuoteInput): Promise<Sky
 }
 
 function findShipment(raw: unknown) {
-  return walkObjects(raw).find((row) => {
+  const root = record(raw);
+  const data = Array.isArray(root.data) ? root.data : root.data ? [root.data] : [root];
+  const shipment = record(data[0]);
+  const included = Array.isArray(root.included) ? root.included : [];
+  const parcel = included.map(record).find((row) => {
     const attrs = record(row.attributes);
     return Boolean(stringValue(row.tracking_number, attrs.tracking_number, row.label_url, attrs.label_url));
-  }) ?? record(raw);
+  });
+  return { shipment, parcel: record(parcel) };
+}
+
+function shipmentLabelUrl(shipment: Record<string, unknown>, parcel: Record<string, unknown>) {
+  return stringValue(
+    record(parcel.attributes).label_url,
+    parcel.label_url,
+    record(shipment.attributes).label_url,
+    shipment.label_url,
+  );
+}
+
+export async function getSkydropxShipmentLabel(providerShipmentId: string): Promise<string | null> {
+  if (process.env.SKYDROPX_MOCK === "true") return null;
+  const raw = await requestSkydropx(`/api/v1/shipments/${encodeURIComponent(providerShipmentId)}`);
+  const { shipment, parcel } = findShipment(raw);
+  return shipmentLabelUrl(shipment, parcel);
 }
 
 function mockShipment(input: CreateShippingShipmentInput): SkydropxShipmentResult {
@@ -317,6 +351,14 @@ function mockShipment(input: CreateShippingShipmentInput): SkydropxShipmentResul
 
 export async function createSkydropxShipment(input: CreateShippingShipmentInput): Promise<SkydropxShipmentResult> {
   if (process.env.SKYDROPX_MOCK === "true") return mockShipment(input);
+  const consignmentNote = process.env.SKYDROPX_CONSIGNMENT_NOTE?.trim();
+  const packageType = process.env.SKYDROPX_PACKAGE_TYPE?.trim();
+  if (!consignmentNote || !/^\d{8}$/.test(consignmentNote)) {
+    throw new ApiError(503, "กรุณาตั้งค่า SKYDROPX_CONSIGNMENT_NOTE เป็นรหัส Carta Porte 8 หลักของสินค้าที่จัดส่ง");
+  }
+  if (!packageType) {
+    throw new ApiError(503, "กรุณาตั้งค่า SKYDROPX_PACKAGE_TYPE เป็นรหัสประเภทบรรจุภัณฑ์ของ Skydropx");
+  }
   const rates = await quoteSkydropxRates({
     from: input.from,
     to: input.to,
@@ -330,7 +372,7 @@ export async function createSkydropxShipment(input: CreateShippingShipmentInput)
     .sort((a, b) => a.price - b.price)[0] ?? [...rates].sort((a, b) => a.price - b.price)[0];
   if (!rate) throw new ApiError(400, `Skydropx ไม่มีราคาที่ใช้ได้สำหรับ ${input.courierCode}`);
 
-  const raw = await requestSkydropx("/api/v2/shipments", {
+  let raw = await requestSkydropx("/api/v2/shipments", {
     method: "POST",
     body: JSON.stringify({
       shipment: {
@@ -339,24 +381,44 @@ export async function createSkydropxShipment(input: CreateShippingShipmentInput)
         printing_format: process.env.SKYDROPX_PRINTING_FORMAT?.trim() || "thermal",
         address_from: toAddress(input.from, true),
         address_to: toAddress(input.to, true),
-        packages: [{ package_number: "1", package_protected: false, declared_value: Math.max(input.declaredValue, 0) }],
+        packages: [{
+          package_number: "1",
+          package_protected: false,
+          declared_value: Math.max(input.declaredValue, 0),
+          consignment_note: consignmentNote,
+          package_type: packageType,
+        }],
       },
     }),
   });
-  const row = findShipment(raw);
-  const attrs = record(row.attributes);
-  const tracking = stringValue(row.tracking_number, attrs.tracking_number);
-  if (!tracking) throw new ApiError(502, "Skydropx สร้าง shipment แล้วแต่ยังไม่ส่งเลข tracking กลับมา", { provider: "skydropx", raw });
+  let { shipment, parcel } = findShipment(raw);
+  let attrs = record(shipment.attributes);
+  let parcelAttrs = record(parcel.attributes);
+  const providerShipmentId = stringValue(shipment.id, attrs.id);
+  let tracking = stringValue(attrs.master_tracking_number, shipment.tracking_number, attrs.tracking_number, parcel.tracking_number, parcelAttrs.tracking_number);
+  for (let attempt = 0; providerShipmentId && attempt < 5 && (!tracking || !shipmentLabelUrl(shipment, parcel)); attempt += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    try {
+      raw = await requestSkydropx(`/api/v1/shipments/${encodeURIComponent(providerShipmentId)}`);
+      ({ shipment, parcel } = findShipment(raw));
+      attrs = record(shipment.attributes);
+      parcelAttrs = record(parcel.attributes);
+      tracking = stringValue(attrs.master_tracking_number, shipment.tracking_number, attrs.tracking_number, parcel.tracking_number, parcelAttrs.tracking_number);
+    } catch {
+      // Skydropx may not expose the newly accepted shipment immediately.
+    }
+  }
+  if (!tracking) throw new ApiError(502, "Skydropx รับคำขอสร้าง shipment แล้ว แต่เลข tracking ยังไม่พร้อม กรุณาตรวจ shipment ใน Skydropx ก่อนลองสร้างซ้ำ", { provider: "skydropx", providerShipmentId, raw });
 
   return {
     purchaseId: null,
-    providerShipmentId: stringValue(row.id, attrs.id) ?? tracking,
+    providerShipmentId: providerShipmentId ?? tracking,
     courierTrackingCode: tracking,
     courierCode: rate.courierCode,
-    shipmentStatus: stringValue(row.status, attrs.status) ?? "label_created",
-    trackingUrl: stringValue(row.tracking_url_provider, attrs.tracking_url_provider)
+    shipmentStatus: stringValue(attrs.workflow_status, shipment.status, attrs.status) ?? "label_created",
+    trackingUrl: stringValue(parcelAttrs.tracking_url_provider, attrs.tracking_url_provider)
       ?? `https://www.skydropx.com/rastreo/?tracking_number=${encodeURIComponent(tracking)}`,
-    labelUrl: stringValue(row.label_url, attrs.label_url),
+    labelUrl: shipmentLabelUrl(shipment, parcel),
     raw,
   };
 }
@@ -375,19 +437,30 @@ export async function getSkydropxTracking(trackingNumber: string, carrierName = 
   if (!carrierName.trim()) {
     return { status: true, orderStatus: null, trackingCode: trackingNumber, courierTrackingCode: trackingNumber, states: [], raw: null };
   }
-  const raw = await requestSkydropx(`/api/v1/shipments/tracking?tracking_number=${encodeURIComponent(trackingNumber)}&carrier_name=${encodeURIComponent(carrierName)}`);
-  const rows = walkObjects(raw).filter((row) => stringValue(row.status, record(row.attributes).status));
+  const path = `/api/v1/shipments/tracking?tracking_number=${encodeURIComponent(trackingNumber)}&carrier_name=${encodeURIComponent(carrierName)}`;
+  let raw: unknown;
+  try {
+    raw = await requestSkydropx(path);
+  } catch (error) {
+    // Skydropx documents 404 here as "this tracking number has no events yet".
+    if (error instanceof ApiError && record(error.details).httpStatus === 404) {
+      return { status: true, orderStatus: null, trackingCode: trackingNumber, courierTrackingCode: trackingNumber, states: [], raw: null };
+    }
+    throw error;
+  }
+  const data = record(raw).data;
+  const rows = (Array.isArray(data) ? data : []).map(record);
   const states: ShippingTrackingState[] = rows.map((row) => {
     const attrs = record(row.attributes);
     const status = stringValue(row.status, attrs.status);
     return {
       status,
-      datetime: stringValue(row.occurred_at, row.updated_at, attrs.occurred_at, attrs.updated_at, attrs.created_at) ?? new Date().toISOString(),
+      datetime: stringValue(attrs.date, row.date, row.occurred_at, row.updated_at, attrs.occurred_at, attrs.updated_at, attrs.created_at) ?? new Date().toISOString(),
       location: stringValue(row.location, attrs.location),
-      description: stringValue(row.description, row.message, attrs.description, attrs.message, status) ?? "Actualización de envío",
+      description: stringValue(attrs.event_description, row.event_description, row.description, row.message, attrs.description, attrs.message, status) ?? "Actualización de envío",
       raw: row,
     };
-  });
+  }).filter((state) => state.status);
   const latest = states[0]?.status ?? null;
   return { status: true, orderStatus: latest, trackingCode: trackingNumber, courierTrackingCode: trackingNumber, states, raw };
 }

@@ -33,8 +33,8 @@ async function main() {
   if (existing.length) {
     assert(existing.length === 7, `Found ${existing.length} existing test orders; refusing to add duplicates.`);
     const backofficeOrders = (await adminGetOrders(1)).filter((order) => String(order.order_no).startsWith(prefix));
-    assert(backofficeOrders.length === 7 && backofficeOrders.every((order) => order.status_code === "CONFIRMED" && Number(order.item_count) === 1), "Backoffice order list did not return all seven paid test orders.");
-    console.log(JSON.stringify({ alreadySeeded: true, backofficeCount: backofficeOrders.length, orders: existing }));
+    assert(backofficeOrders.length === 7 && backofficeOrders.every((order) => Number(order.item_count) === 1), "Backoffice order list did not return all seven test orders.");
+    console.log(JSON.stringify({ alreadySeeded: true, backofficeCount: backofficeOrders.length, orders: backofficeOrders.map((order) => ({ or_id: order.or_id, order_no: order.order_no, status_code: order.status_code, hasTracking: Boolean(order.tracking_no) })) }));
     return;
   }
 
@@ -109,7 +109,7 @@ async function main() {
     for (const { variant, shippingFee, orderNo } of planned) {
       const subtotal = roundMoney(Number(variant.pv_price));
       const total = roundMoney(subtotal + shippingFee);
-      const [orderResult] = await conn.query("INSERT INTO Orders SET ?", [{ order_no: orderNo, cart_id: cartId, u_id: userId, st_id: store.st_id, s_id: statuses[0].s_id, status: "paid", subtotal, discount_total: 0, shipping_fee: shippingFee, provider_shipping_cost: shippingFee, shipping_sc_id: carrier.sc_id, grand_total: total, shipping_name: buyer.name, shipping_phone: buyer.phone, shipping_address: buyer.address, remark: "TEST ONLY — simulated payment; no Mercado Pago transaction", payment_expires_at: null, created_at: new Date(), update_at: new Date() }]);
+      const [orderResult] = await conn.query("INSERT INTO Orders SET ?", [{ order_no: orderNo, cart_id: cartId, u_id: userId, st_id: store.st_id, s_id: statuses[0].s_id, status: "paid", subtotal, discount_total: 0, shipping_fee: shippingFee, provider_shipping_cost: shippingFee, shipping_sc_id: carrier.sc_id, grand_total: total, shipping_name: buyer.name, shipping_phone: buyer.phone, shipping_address: buyer.address, remark: "TEST ONLY — simulated payment; no Conekta transaction", payment_expires_at: null, created_at: new Date(), update_at: new Date() }]);
       const orderId = orderResult.insertId;
       const [itemResult] = await conn.query("INSERT INTO Order_items SET ?", [{ or_id: orderId, p_id: variant.p_id, pv_id: variant.pv_id, sku: variant.pv_sku, product_name: variant.p_name, variant_name: variant.pv_sku, unit_price: subtotal, discount_amount: 0, qty: 1, line_total: subtotal, cost_snapshot: Number(variant.pv_cost), created_at: new Date() }]);
       await reserveInventoryForOrderItems(conn, [{ or_id: orderId, oi_id: itemResult.insertId, pv_id: variant.pv_id, qty: 1, order_no: orderNo }]);
@@ -118,7 +118,7 @@ async function main() {
       const [shipmentResult] = await conn.query("INSERT INTO Order_shipments SET ?", [{ or_id: orderId, loc_id: warehouse.loc_id, shipment_no: `${orderNo}-S01`, status: "planned", sender_name: store.st_company_name ?? "Store #1", sender_phone: store.st_phone, sender_email: store.st_email, sender_address: warehouse.loc_address, sender_zip_code: warehouse.zip_code, sender_province_name: warehouse.state, sender_district_name: warehouse.municipality || warehouse.city, sender_subdistrict_name: warehouse.colonia, recipient_name: buyer.name, recipient_phone: buyer.phone, recipient_address: buyer.address, recipient_zip_code: buyer.postcode, recipient_province_name: buyer.state, recipient_district_name: buyer.municipality, recipient_subdistrict_name: buyer.colonia, created_at: new Date(), updated_at: new Date() }]);
       await conn.query("INSERT INTO Order_shipment_items SET ?", [{ os_id: shipmentResult.insertId, or_id: orderId, oi_id: itemResult.insertId, pv_id: variant.pv_id, qty: 1, created_at: new Date() }]);
 
-      const [paymentResult] = await conn.query("INSERT INTO Payments SET ?", [{ payment_no: `TESTPAY-${orderNo}`, amount_total: total, payment_method: "mercado_pago", payment_status: "paid", payment_ref: null, paid_at: new Date(), created_at: new Date(), u_id: userId }]);
+      const [paymentResult] = await conn.query("INSERT INTO Payments SET ?", [{ payment_no: `TESTPAY-${orderNo}`, amount_total: total, payment_method: "conekta", payment_status: "paid", payment_ref: null, paid_at: new Date(), created_at: new Date(), u_id: userId }]);
       await conn.query("INSERT INTO Payment_orders SET ?", [{ pay_id: paymentResult.insertId, or_id: orderId, created_at: new Date() }]);
       created.push({ or_id: orderId, order_no: orderNo });
     }

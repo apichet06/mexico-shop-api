@@ -14,11 +14,8 @@ import {
     type OrderStatusCode,
 } from "../orders/order-status.service.js";
 import type {
-    MercadoPagoCheckoutInput,
-    MercadoPagoPaymentResponse,
-    MercadoPagoPaymentSearchResponse,
-    MercadoPagoPreferenceResponse,
-    MercadoPagoRefundResponse,
+    ConektaCheckoutInput,
+    ConektaOrderResponse,
     PaymentResultDTO,
 } from "./payment.type.js";
 
@@ -45,6 +42,8 @@ type PaymentOrderSocketRow = RowDataPacket & {
 type UserContactRow = RowDataPacket & {
     u_email: string | null;
     u_username: string | null;
+    shipping_name: string | null;
+    shipping_phone: string | null;
 };
 
 type PendingPaymentRow = RowDataPacket & {
@@ -54,11 +53,10 @@ type PendingPaymentRow = RowDataPacket & {
     amount_total: number;
 };
 
-let mercadoPagoPaymentSchemaReady: Promise<void> | null = null;
+let conektaPaymentSchemaReady: Promise<void> | null = null;
 
-// ฐานข้อมูลเดิมอาจกำหนด payment_method เป็น ENUM ของ Omise จึงเพิ่มค่าใหม่โดยยังเก็บค่าประวัติเดิมไว้
-function ensureMercadoPagoPaymentSchema(): Promise<void> {
-    mercadoPagoPaymentSchemaReady ??= pool.query<(RowDataPacket & { data_type: string; column_type: string })[]>(
+function ensureConektaPaymentSchema(): Promise<void> {
+    conektaPaymentSchemaReady ??= pool.query<(RowDataPacket & { data_type: string; column_type: string })[]>(
         `SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
@@ -68,21 +66,22 @@ function ensureMercadoPagoPaymentSchema(): Promise<void> {
     )
         .then(async ([columns]) => {
             const column = columns[0];
-            if (!column || column.data_type.toLowerCase() !== "enum" || column.column_type.includes("'mercado_pago'")) return;
+            if (!column || column.data_type.toLowerCase() !== "enum" || column.column_type.includes("'conekta'")) return;
 
             await pool.query(
-                "ALTER TABLE Payments MODIFY COLUMN payment_method ENUM('mercado_pago','card','promptpay','mobile_banking_kbank','mobile_banking_scb') NOT NULL"
+                `ALTER TABLE Payments MODIFY COLUMN payment_method ${column.column_type.slice(0, -1)},'conekta') NOT NULL`
             );
         })
         .then(() => undefined);
 
-    return mercadoPagoPaymentSchemaReady;
+    return conektaPaymentSchemaReady;
 }
 
 export type PaymentOrderSummary = {
     or_id: number;
     order_no: string;
     grand_total: number;
+    payment_expires_at?: Date | string | null | undefined;
 };
 
 function roundMoney(value: number): number {
@@ -99,10 +98,10 @@ function buildPaymentNo(): string {
     return `PAY${yyyymmdd}-${suffix}`;
 }
 
-function mercadoPagoAccessToken(): string {
-    const token = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
-    if (!token) throw new ApiError(503, "MERCADO_PAGO_ACCESS_TOKEN is not configured");
-    return token;
+function conektaPrivateKey(): string {
+    const key = process.env.CONEKTA_PRIVATE_KEY?.trim();
+    if (!key) throw new ApiError(503, "CONEKTA_PRIVATE_KEY is not configured");
+    return key;
 }
 
 function shopBaseUrl(): string {
@@ -111,39 +110,40 @@ function shopBaseUrl(): string {
         process.env.SHOP_URL?.trim() ||
         process.env.FRONTEND_URL?.trim();
     if (!value) {
-        throw new ApiError(503, "ARCANA_SHOP_URL, SHOP_URL, or FRONTEND_URL is required for Mercado Pago return URLs");
+        throw new ApiError(503, "ARCANA_SHOP_URL, SHOP_URL, or FRONTEND_URL is required for Conekta return URLs");
     }
     return value.replace(/\/$/, "");
 }
 
-function mercadoPagoReturnUrls() {
+function conektaReturnUrls() {
     const base = shopBaseUrl();
     return {
-        success: process.env.MERCADO_PAGO_SUCCESS_URL?.trim() || `${base}/arcana/account/orders?payment=success`,
-        pending: process.env.MERCADO_PAGO_PENDING_URL?.trim() || `${base}/arcana/account/orders?payment=pending`,
-        failure: process.env.MERCADO_PAGO_FAILURE_URL?.trim() || `${base}/arcana/account/orders?payment=failure`,
+        success: `${base}/arcana/account/orders?payment=success`,
+        failure: `${base}/arcana/account/orders?payment=failure`,
     };
 }
 
-export async function mercadoPagoRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function conektaRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${mercadoPagoAccessToken()}`);
+    headers.set("Authorization", `Bearer ${conektaPrivateKey()}`);
+    headers.set("Accept", "application/vnd.conekta-v2.3.0+json");
+    headers.set("Accept-Language", "es");
     headers.set("Content-Type", "application/json");
 
-    const response = await fetch(`https://api.mercadopago.com${path}`, {
+    const response = await fetch(`https://api.conekta.io${path}`, {
         ...init,
         headers,
     });
     const payload = await response.json().catch(() => ({})) as T & {
         message?: string;
         error?: string;
-        cause?: unknown;
+        details?: { message?: string }[];
     };
 
     if (!response.ok) {
         throw new ApiError(
-            response.status >= 500 ? 502 : 400,
-            payload.message || payload.error || "No se pudo conectar con Mercado Pago",
+            response.status >= 500 ? 502 : response.status === 401 || response.status === 403 ? 503 : response.status,
+            payload.details?.[0]?.message || payload.message || payload.error || "No se pudo conectar con Conekta",
             payload
         );
     }
@@ -152,59 +152,66 @@ export async function mercadoPagoRequest<T>(path: string, init: RequestInit = {}
 
 async function getUserContact(conn: PoolConnection, uId: number): Promise<UserContactRow> {
     const [rows] = await conn.query<UserContactRow[]>(
-        "SELECT u_email, u_username FROM Users WHERE u_id = ? LIMIT 1",
-        [uId]
-    );
+        `SELECT u.u_email, u.u_username, o.shipping_name, o.shipping_phone
+         FROM Users u
+         LEFT JOIN Orders o ON o.u_id = u.u_id
+         WHERE u.u_id = ? ORDER BY o.or_id DESC LIMIT 1`, [uId]);
     const user = rows[0];
     if (!user) throw new ApiError(404, "ไม่พบข้อมูลผู้ใช้");
     return user;
 }
 
-async function createMercadoPagoPreference(input: {
+async function createConektaOrder(input: {
     paymentNo: string;
     uId: number;
     orders: PaymentOrderSummary[];
-    payerEmail?: string | null;
-}): Promise<MercadoPagoPreferenceResponse> {
-    const backUrls = mercadoPagoReturnUrls();
-    const notificationUrl = process.env.MERCADO_PAGO_WEBHOOK_URL?.trim();
+    payer: UserContactRow;
+    expiresAt: Date;
+}): Promise<ConektaOrderResponse> {
+    const backUrls = conektaReturnUrls();
+    const phone = input.payer.shipping_phone?.replace(/\D/g, "").slice(-10);
+    if (!input.payer.u_email || !phone || phone.length !== 10) {
+        throw new ApiError(400, "กรุณาระบุอีเมลและหมายเลขโทรศัพท์สำหรับการชำระเงิน");
+    }
     const payload = {
-        items: input.orders.map((order) => ({
-            id: String(order.or_id),
-            title: `Pedido ${order.order_no}`,
-            description: `Arcana Mexico - ${order.order_no}`,
-            currency_id: "MXN",
+        line_items: input.orders.map((order) => ({
+            name: `Pedido ${order.order_no}`,
             quantity: 1,
-            unit_price: roundMoney(Number(order.grand_total)),
+            unit_price: Math.round(Number(order.grand_total) * 100),
         })),
-        external_reference: input.paymentNo,
         metadata: {
             payment_no: input.paymentNo,
             user_id: String(input.uId),
             order_ids: input.orders.map((order) => order.or_id).join(","),
         },
-        ...(input.payerEmail ? { payer: { email: input.payerEmail } } : {}),
-        back_urls: backUrls,
-        auto_return: "approved",
-        statement_descriptor: (process.env.MERCADO_PAGO_STATEMENT_DESCRIPTOR?.trim() || "ARCANA MEXICO").slice(0, 22),
-        ...(notificationUrl ? { notification_url: notificationUrl } : {}),
+        customer_info: {
+            name: input.payer.shipping_name || input.payer.u_username || "Cliente",
+            email: input.payer.u_email,
+            phone,
+        },
+        currency: "MXN",
+        checkout: {
+            type: "HostedPayment",
+            name: `Arcana Mexico ${input.paymentNo}`,
+            expires_at: Math.floor(input.expiresAt.getTime() / 1000),
+            success_url: `${backUrls.success}&order_ids=${input.orders.map((order) => order.or_id).join(",")}`,
+            failure_url: `${backUrls.failure}&order_ids=${input.orders.map((order) => order.or_id).join(",")}`,
+            excluded_payment_methods: ["bnpl", "pay_by_bank"],
+        },
     };
 
-    const preference = await mercadoPagoRequest<MercadoPagoPreferenceResponse>("/checkout/preferences", {
+    const order = await conektaRequest<ConektaOrderResponse>("/orders", {
         method: "POST",
-        headers: { "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify(payload),
     });
-    if (!preference.id) throw new ApiError(502, "Mercado Pago did not return a preference id", preference);
-    return preference;
+    if (order.livemode) throw new ApiError(503, "Conekta live payments are disabled during sandbox integration");
+    if (!order.id || !order.checkout?.url) throw new ApiError(502, "Conekta did not return a checkout URL", order);
+    return order;
 }
 
-function preferenceCheckoutUrl(preference: MercadoPagoPreferenceResponse): string {
-    const useSandbox = process.env.MERCADO_PAGO_USE_SANDBOX === "true";
-    const url = useSandbox
-        ? preference.sandbox_init_point || preference.init_point
-        : preference.init_point;
-    if (!url) throw new ApiError(502, "Mercado Pago did not return a checkout URL", preference);
+function conektaCheckoutUrl(order: ConektaOrderResponse): string {
+    const url = order.checkout?.url;
+    if (!url) throw new ApiError(502, "Conekta did not return a checkout URL", order);
     return url;
 }
 
@@ -254,21 +261,21 @@ function emitPaidOrderChanges(rows: PaymentOrderSocketRow[]) {
 
 export async function chargeAndRecordPayment(
     conn: PoolConnection,
-    input: { u_id: number; payment_method: "mercado_pago"; orders: PaymentOrderSummary[] }
+    input: { u_id: number; payment_method: "conekta"; orders: PaymentOrderSummary[] }
 ): Promise<PaymentResultDTO> {
-    await ensureMercadoPagoPaymentSchema();
+    await ensureConektaPaymentSchema();
     if (!input.orders.length) throw new ApiError(400, "กรุณาระบุคำสั่งซื้อที่ต้องชำระเงิน");
     const amountTotal = roundMoney(input.orders.reduce((sum, order) => sum + Number(order.grand_total || 0), 0));
     if (amountTotal <= 0) throw new ApiError(400, "ยอดชำระเงินไม่ถูกต้อง");
 
-    // ใช้ preference ที่ยัง pending เดิมเมื่อผู้ใช้กดจ่ายซ้ำ เพื่อป้องกันการสร้าง checkout หลายรายการให้ order ชุดเดียวกัน
+    // Reuse a pending checkout for the same group of orders.
     const orderIds = input.orders.map((order) => order.or_id);
     const [pendingRows] = await conn.query<PendingPaymentRow[]>(
         `SELECT p.pay_id, p.payment_no, p.payment_ref, p.amount_total
          FROM Payments p
          INNER JOIN Payment_orders po ON po.pay_id = p.pay_id
          WHERE p.u_id = ?
-           AND p.payment_method = 'mercado_pago'
+           AND p.payment_method = 'conekta'
            AND p.payment_status = 'pending'
            AND po.or_id IN (?)
          GROUP BY p.pay_id, p.payment_no, p.payment_ref, p.amount_total
@@ -281,40 +288,57 @@ export async function chargeAndRecordPayment(
     const pending = pendingRows[0];
     if (pending?.payment_ref) {
         try {
-            const preference = await mercadoPagoRequest<MercadoPagoPreferenceResponse>(
-                `/checkout/preferences/${encodeURIComponent(pending.payment_ref)}`,
+            const remote = await conektaRequest<ConektaOrderResponse>(
+                `/orders/${encodeURIComponent(pending.payment_ref)}`,
                 { method: "GET" }
             );
+            if (remote.payment_status === "paid") {
+                throw new ApiError(409, "Payment already completed; refresh the order status");
+            }
+            if ((remote.payment_status === "pending_payment" || remote.payment_status == null) && !remote.checkout?.url) {
+                throw new ApiError(409, "Conekta checkout URL is unavailable");
+            }
+            if (remote.payment_status !== "pending_payment" && remote.payment_status != null) throw new ApiError(410, "Checkout expired");
             return {
                 pay_id: Number(pending.pay_id),
                 payment_no: pending.payment_no,
                 payment_status: "pending",
                 payment_ref: pending.payment_ref,
                 amount_total: Number(pending.amount_total),
-                checkout_url: preferenceCheckoutUrl(preference),
+                checkout_url: conektaCheckoutUrl(remote),
                 order_ids: orderIds,
             };
         } catch (error) {
-            // preference ที่ไม่มีแล้วสร้างใหม่ได้ แต่ถ้า Mercado Pago ล่มให้ส่ง error เดิมเพื่อป้องกันรายการซ้ำ
-            if (!(error instanceof ApiError) || error.status >= 500) throw error;
+            // Only a missing or expired remote order can be replaced.
+            if (!(error instanceof ApiError) || ![404, 410].includes(error.status)) throw error;
         }
     }
 
     const paymentNo = buildPaymentNo();
     const user = await getUserContact(conn, input.u_id);
-    const preference = await createMercadoPagoPreference({
+    const minimumExpiry = Date.now() + (2 * 24 * 60 + 5) * 60_000;
+    const requestedExpiry = Math.min(...input.orders.map((order) =>
+        order.payment_expires_at ? new Date(order.payment_expires_at).getTime() : minimumExpiry
+    ));
+    const expiresAt = new Date(Math.max(Number.isFinite(requestedExpiry) ? requestedExpiry : minimumExpiry, minimumExpiry));
+    await conn.query(
+        "UPDATE Orders SET payment_expires_at = ? WHERE or_id IN (?)",
+        [expiresAt, orderIds]
+    );
+    const remote = await createConektaOrder({
         paymentNo,
         uId: input.u_id,
         orders: input.orders,
-        payerEmail: user.u_email,
+        payer: user,
+        expiresAt,
     });
-    const checkoutUrl = preferenceCheckoutUrl(preference);
+    const checkoutUrl = conektaCheckoutUrl(remote);
 
     const [result] = await conn.query<ResultSetHeader>(
         `INSERT INTO Payments
             (payment_no, amount_total, payment_method, payment_status, payment_ref, paid_at, created_at, u_id)
-         VALUES (?, ?, 'mercado_pago', 'pending', ?, NULL, ?, ?)`,
-        [paymentNo, amountTotal.toFixed(2), preference.id, new Date(), input.u_id]
+         VALUES (?, ?, 'conekta', 'pending', ?, NULL, ?, ?)`,
+        [paymentNo, amountTotal.toFixed(2), remote.id, new Date(), input.u_id]
     );
     const payId = result.insertId;
     await conn.query(
@@ -326,48 +350,65 @@ export async function chargeAndRecordPayment(
         pay_id: payId,
         payment_no: paymentNo,
         payment_status: "pending",
-        payment_ref: preference.id ?? null,
+        payment_ref: remote.id,
         amount_total: amountTotal,
         checkout_url: checkoutUrl,
         order_ids: input.orders.map((order) => order.or_id),
     };
 }
 
-function mapMercadoPagoStatus(status?: string): PaymentResultDTO["payment_status"] | null {
-    if (status === "approved") return "paid";
-    if (["rejected", "cancelled"].includes(status || "")) return "failed";
-    if (["pending", "in_process", "authorized"].includes(status || "")) return "pending";
+function mapConektaStatus(status?: string | null): PaymentResultDTO["payment_status"] | null {
+    if (status === "paid") return "paid";
+    if (["declined", "canceled", "expired", "voided"].includes(status || "")) return "failed";
+    if (status == null || ["pending_payment", "pre_authorized"].includes(status)) return "pending";
     return null;
 }
 
-export async function handleMercadoPagoPayment(paymentId: string): Promise<void> {
-    const remote = await mercadoPagoRequest<MercadoPagoPaymentResponse>(`/v1/payments/${encodeURIComponent(paymentId)}`, { method: "GET" });
-    const paymentStatus = mapMercadoPagoStatus(remote.status);
-    const paymentNo = remote.external_reference?.trim();
-    if (!paymentStatus || !paymentNo) return;
+export async function handleConektaOrder(orderId: string): Promise<void> {
+    const remote = await conektaRequest<ConektaOrderResponse>(`/orders/${encodeURIComponent(orderId)}`, { method: "GET" });
+    const paymentStatus = mapConektaStatus(remote.payment_status);
+    if (!paymentStatus || remote.currency !== "MXN" || remote.livemode) return;
 
     await ensureInventoryReservationTable();
     const conn = await pool.getConnection();
     let confirmedOrders: PaymentOrderSocketRow[] = [];
     try {
         await conn.beginTransaction();
-        const [payments] = await conn.query<(RowDataPacket & { pay_id: number; payment_status: string })[]>(
-            "SELECT pay_id, payment_status FROM Payments WHERE payment_no = ? LIMIT 1 FOR UPDATE",
-            [paymentNo]
+        const [payments] = await conn.query<(RowDataPacket & { pay_id: number; payment_status: string; amount_total: number })[]>(
+            "SELECT pay_id, payment_status, amount_total FROM Payments WHERE payment_ref = ? AND payment_method = 'conekta' LIMIT 1 FOR UPDATE",
+            [remote.id]
         );
         const local = payments[0];
         if (!local) {
             await conn.rollback();
             return;
         }
-        if (local.payment_status === "paid" || local.payment_status === "failed") {
+        if (local.payment_status === "paid" || (local.payment_status === "failed" && paymentStatus !== "paid")) {
             await conn.rollback();
             return;
+        }
+        if (Math.round(Number(local.amount_total) * 100) !== remote.amount) {
+            throw new ApiError(409, "Conekta order amount differs from local payment");
+        }
+
+        if (paymentStatus === "pending") {
+            const referenceExpiry = Math.max(0, ...(remote.charges?.data ?? []).map((charge) =>
+                Number(charge.payment_method?.expires_at ?? 0)
+            ));
+            if (Number.isFinite(referenceExpiry) && referenceExpiry * 1000 > Date.now()) {
+                await conn.query(
+                    `UPDATE Orders o
+                     INNER JOIN Payment_orders po ON po.or_id = o.or_id
+                     SET o.payment_expires_at = GREATEST(o.payment_expires_at, FROM_UNIXTIME(?))
+                     WHERE po.pay_id = ?`,
+                    [referenceExpiry, local.pay_id]
+                );
+            }
         }
 
         await conn.query(
             "UPDATE Payments SET payment_status = ?, payment_ref = ?, paid_at = ? WHERE pay_id = ?",
-            [paymentStatus, String(remote.id ?? paymentId), paymentStatus === "paid" ? new Date() : null, local.pay_id]
+            [paymentStatus, remote.id, paymentStatus === "paid" ? new Date() : null, local.pay_id]
         );
 
         if (paymentStatus === "paid") {
@@ -416,13 +457,7 @@ export async function handleMercadoPagoPayment(paymentId: string): Promise<void>
     }
 }
 
-async function findRemotePaymentByReference(paymentNo: string): Promise<MercadoPagoPaymentResponse | null> {
-    const params = new URLSearchParams({ external_reference: paymentNo, sort: "date_created", criteria: "desc" });
-    const result = await mercadoPagoRequest<MercadoPagoPaymentSearchResponse>(`/v1/payments/search?${params.toString()}`, { method: "GET" });
-    return result.results?.[0] ?? null;
-}
-
-export async function syncMercadoPagoPayment(uId: number, orderIds: number[]): Promise<PaymentResultDTO> {
+export async function syncConektaPayment(uId: number, orderIds: number[]): Promise<PaymentResultDTO> {
     const uniqueIds = [...new Set(orderIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
     if (!uniqueIds.length) throw new ApiError(400, "กรุณาระบุคำสั่งซื้อที่ต้องการตรวจสอบการชำระเงิน");
 
@@ -437,16 +472,15 @@ export async function syncMercadoPagoPayment(uId: number, orderIds: number[]): P
          FROM Payments p
          INNER JOIN Payment_orders po ON po.pay_id = p.pay_id
          INNER JOIN Orders o ON o.or_id = po.or_id
-         WHERE o.or_id IN (?) AND o.u_id = ? AND p.payment_method = 'mercado_pago'
+         WHERE o.or_id IN (?) AND o.u_id = ? AND p.payment_method = 'conekta'
          ORDER BY p.pay_id DESC LIMIT 1`,
         [uniqueIds, uId]
     );
     const payment = rows[0];
-    if (!payment) throw new ApiError(404, "ไม่พบรายการชำระเงิน Mercado Pago ของคำสั่งซื้อนี้");
+    if (!payment) throw new ApiError(404, "ไม่พบรายการชำระเงิน Conekta ของคำสั่งซื้อนี้");
 
-    if (payment.payment_status === "pending") {
-        const remote = await findRemotePaymentByReference(payment.payment_no);
-        if (remote?.id != null) await handleMercadoPagoPayment(String(remote.id));
+    if (payment.payment_status === "pending" && payment.payment_ref) {
+        await handleConektaOrder(payment.payment_ref);
     }
 
     const [updatedRows] = await pool.query<typeof rows>(
@@ -468,7 +502,66 @@ export async function syncMercadoPagoPayment(uId: number, orderIds: number[]): P
     };
 }
 
-export async function createMercadoPagoCheckout(input: MercadoPagoCheckoutInput): Promise<PaymentResultDTO> {
+// Reconcile asynchronous cash/SPEI payments even when a webhook was delayed or missed.
+let lastReconciledPayId = 0;
+export async function reconcilePendingConektaPayments(limit = 50): Promise<number> {
+    const [rows] = await pool.query<(RowDataPacket & { pay_id: number; payment_ref: string })[]>(
+        `SELECT p.pay_id, p.payment_ref
+         FROM Payments p
+         WHERE p.payment_method = 'conekta'
+           AND p.payment_status = 'pending'
+           AND p.payment_ref IS NOT NULL
+           AND p.pay_id > ?
+           AND EXISTS (
+               SELECT 1 FROM Payment_orders po
+               INNER JOIN Orders o ON o.or_id = po.or_id
+               INNER JOIN Status s ON s.s_id = o.s_id
+               WHERE po.pay_id = p.pay_id AND s.s_code = 'PENDING'
+           )
+         ORDER BY p.pay_id ASC
+         LIMIT ?`,
+        [lastReconciledPayId, limit]
+    );
+
+    if (!rows.length && lastReconciledPayId !== 0) {
+        lastReconciledPayId = 0;
+        return reconcilePendingConektaPayments(limit);
+    }
+
+    let reconciled = 0;
+    for (const row of rows) {
+        lastReconciledPayId = Number(row.pay_id);
+        try {
+            await handleConektaOrder(row.payment_ref);
+            reconciled++;
+        } catch (error) {
+            console.error(`[payments] Conekta reconciliation failed for ${row.payment_ref}:`, error);
+        }
+    }
+    return reconciled;
+}
+
+let conektaReconciliationJobStarted = false;
+export function startConektaReconciliationJob(intervalMs = 60_000): void {
+    if (conektaReconciliationJobStarted) return;
+    conektaReconciliationJobStarted = true;
+    let running = false;
+    const run = async () => {
+        if (running) return;
+        running = true;
+        try {
+            await reconcilePendingConektaPayments();
+        } catch (error) {
+            console.error("[payments] Conekta reconciliation job failed:", error);
+        } finally {
+            running = false;
+        }
+    };
+    void run();
+    setInterval(() => { void run(); }, intervalMs);
+}
+
+export async function createConektaCheckout(input: ConektaCheckoutInput): Promise<PaymentResultDTO> {
     await ensureInventoryReservationTable();
     const orderIds = [...new Set(input.order_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
     if (!orderIds.length) throw new ApiError(400, "กรุณาระบุคำสั่งซื้อที่ต้องชำระเงิน");
@@ -479,7 +572,7 @@ export async function createMercadoPagoCheckout(input: MercadoPagoCheckoutInput)
         const orders = await getPayableOrdersForUpdate(conn, input.u_id, orderIds);
         const payment = await chargeAndRecordPayment(conn, {
             u_id: input.u_id,
-            payment_method: "mercado_pago",
+            payment_method: "conekta",
             orders,
         });
         await conn.commit();
@@ -492,40 +585,30 @@ export async function createMercadoPagoCheckout(input: MercadoPagoCheckoutInput)
     }
 }
 
-export async function createMercadoPagoRefund(input: {
-    paymentId: string;
+export async function createConektaRefund(input: {
+    orderId: string;
     amount?: number;
-    metadata?: Record<string, string>;
-}): Promise<MercadoPagoRefundResponse> {
-    if (!input.paymentId.trim()) throw new ApiError(400, "ไม่พบ Mercado Pago payment id สำหรับคืนเงิน");
-    const body = input.amount != null ? JSON.stringify({ amount: roundMoney(input.amount) }) : undefined;
-    return mercadoPagoRequest<MercadoPagoRefundResponse>(
-        `/v1/payments/${encodeURIComponent(input.paymentId.trim())}/refunds`,
+}): Promise<ConektaOrderResponse> {
+    if (!input.orderId.trim()) throw new ApiError(400, "ไม่พบ Conekta order id สำหรับคืนเงิน");
+    const body = JSON.stringify({
+        reason: "requested_by_client",
+        ...(input.amount != null ? { amount: Math.round(input.amount * 100) } : {}),
+    });
+    return conektaRequest<ConektaOrderResponse>(
+        `/orders/${encodeURIComponent(input.orderId.trim())}/refunds`,
         {
             method: "POST",
-            headers: { "X-Idempotency-Key": crypto.randomUUID() },
-            ...(body ? { body } : {}),
+            body,
         }
     );
 }
 
-export function verifyMercadoPagoWebhookSignature(input: {
-    xSignature?: string | undefined;
-    xRequestId?: string | undefined;
-    dataId?: string | undefined;
-}): boolean {
-    const secret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim();
-    if (!secret || !input.xSignature || !input.xRequestId || !input.dataId) return false;
-    const parts = Object.fromEntries(
-        input.xSignature.split(",").map((part) => {
-            const [key, ...rest] = part.trim().split("=");
-            return [key, rest.join("=")];
-        })
-    );
-    if (!parts.ts || !parts.v1) return false;
-    const manifest = `id:${input.dataId};request-id:${input.xRequestId};ts:${parts.ts};`;
-    const expected = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
-    const actualBuffer = Buffer.from(parts.v1, "hex");
-    const expectedBuffer = Buffer.from(expected, "hex");
-    return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+export function verifyConektaWebhookSignature(rawBody: Buffer | undefined, digest: string | undefined): boolean {
+    const publicKey = process.env.CONEKTA_WEBHOOK_PUBLIC_KEY?.replace(/\\n/g, "\n").trim();
+    if (!publicKey || !rawBody || !digest) return false;
+    try {
+        return crypto.verify("RSA-SHA256", rawBody, publicKey, Buffer.from(digest, "base64"));
+    } catch {
+        return false;
+    }
 }

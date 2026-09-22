@@ -2,25 +2,23 @@ import { Router } from "express";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { ApiError } from "../../shared/errors/ApiError.js";
 import {
-    handleMercadoPagoPayment,
-    verifyMercadoPagoWebhookSignature,
+    handleConektaOrder,
+    verifyConektaWebhookSignature,
 } from "../payments/payment.service.js";
 import { handleSkydropxWebhook, verifySkydropxWebhook } from "../shipping/shipping.webhook.js";
 
 export const webhookRouter = Router();
 
-webhookRouter.post("/mercado-pago", asyncHandler(async (req, res) => {
-    const queryDataId = typeof req.query["data.id"] === "string" ? req.query["data.id"] : undefined;
-    const bodyDataId = req.body?.data?.id != null ? String(req.body.data.id) : undefined;
-    const dataId = queryDataId || bodyDataId;
-    const type = typeof req.query.type === "string" ? req.query.type : req.body?.type;
-    const xSignature = typeof req.headers["x-signature"] === "string" ? req.headers["x-signature"] : undefined;
-    const xRequestId = typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : undefined;
-
-    if (!verifyMercadoPagoWebhookSignature({ xSignature, xRequestId, dataId })) {
-        throw new ApiError(401, "Invalid Mercado Pago webhook signature");
+webhookRouter.post("/conekta", asyncHandler(async (req, res) => {
+    const digest = typeof req.headers.digest === "string" ? req.headers.digest : undefined;
+    const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody;
+    if (!verifyConektaWebhookSignature(rawBody, digest)) {
+        throw new ApiError(401, "Invalid Conekta webhook signature");
     }
-    if (type === "payment" && dataId) await handleMercadoPagoPayment(dataId);
+    if (req.body?.type === "order.paid" || req.body?.type === "order.pending_payment") {
+        const orderId = req.body?.data?.object?.id;
+        if (typeof orderId === "string") await handleConektaOrder(orderId);
+    }
     res.status(200).json({ received: true });
 }));
 

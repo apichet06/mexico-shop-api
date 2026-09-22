@@ -60,7 +60,7 @@ export type RefundHistoryEntryDTO = {
     amount: number;
     remark: string | null;
     return_tracking: string | null;
-    refund_method: "mercado_pago" | "omise" | "manual" | null;
+    refund_method: "conekta" | "omise" | "manual" | null;
     created_at: string;
     updated_at: string;
     items: RefundItemDTO[];
@@ -133,7 +133,7 @@ export type OrderDTO = {
     refund_id?: number | null;
     refund_amount?: number | null;
     refund_remark?: string | null;
-    refund_method?: "mercado_pago" | "omise" | "manual" | null;
+    refund_method?: "conekta" | "omise" | "manual" | null;
     refund_updated_at?: string | null;
     subtotal: number;
     discount_total: number;
