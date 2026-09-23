@@ -2786,6 +2786,9 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
         if (statusCode === "DELIVERED" && imageFiles.length === 0) {
             throw new ApiError(400, "Adjunta al menos 1 foto del producto que deseas devolver.");
         }
+        if (statusCode === "DELIVERED" && returnTracking.trim().length < 3) {
+            throw new ApiError(400, "Ingresa el número de seguimiento del paquete devuelto.");
+        }
 
         // buyer ทำได้แค่สร้าง request pending เท่านั้น
         // การคืนเงินจริงต้องดำเนินการฝั่งร้าน/admin หลังตรวจสอบคำขอแล้ว
