@@ -135,6 +135,7 @@ export type OrderDTO = {
     refund_remark?: string | null;
     refund_method?: "conekta" | "omise" | "manual" | null;
     refund_updated_at?: string | null;
+    payment_channel?: string | null;
     subtotal: number;
     discount_total: number;
     shipping_fee: number;

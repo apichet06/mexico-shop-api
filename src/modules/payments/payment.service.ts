@@ -55,26 +55,51 @@ type PendingPaymentRow = RowDataPacket & {
 
 let conektaPaymentSchemaReady: Promise<void> | null = null;
 
-function ensureConektaPaymentSchema(): Promise<void> {
-    conektaPaymentSchemaReady ??= pool.query<(RowDataPacket & { data_type: string; column_type: string })[]>(
-        `SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type
+export function ensureConektaPaymentSchema(): Promise<void> {
+    conektaPaymentSchemaReady ??= pool.query<(RowDataPacket & { column_name: string; data_type: string; column_type: string })[]>(
+        `SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type, COLUMN_TYPE AS column_type
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
            AND TABLE_NAME = 'Payments'
-           AND COLUMN_NAME = 'payment_method'
-         LIMIT 1`
+           AND COLUMN_NAME IN ('payment_method', 'payment_channel')`
     )
         .then(async ([columns]) => {
-            const column = columns[0];
-            if (!column || column.data_type.toLowerCase() !== "enum" || column.column_type.includes("'conekta'")) return;
+            const paymentMethodColumn = columns.find((column) => column.column_name === "payment_method");
+            const hasPaymentChannel = columns.some((column) => column.column_name === "payment_channel");
 
-            await pool.query(
-                `ALTER TABLE Payments MODIFY COLUMN payment_method ${column.column_type.slice(0, -1)},'conekta') NOT NULL`
-            );
+            if (paymentMethodColumn?.data_type.toLowerCase() === "enum" && !paymentMethodColumn.column_type.includes("'conekta'")) {
+                await pool.query(
+                    `ALTER TABLE Payments MODIFY COLUMN payment_method ${paymentMethodColumn.column_type.slice(0, -1)},'conekta') NOT NULL`
+                );
+            }
+            if (!hasPaymentChannel) {
+                await pool.query("ALTER TABLE Payments ADD COLUMN payment_channel VARCHAR(32) NULL AFTER payment_method");
+            }
         })
         .then(() => undefined);
 
     return conektaPaymentSchemaReady;
+}
+
+function getConektaPaymentChannel(order: ConektaOrderResponse): string | null {
+    const method = order.charges?.data?.[0]?.payment_method;
+    if (!method) return null;
+
+    const productType = method.product_type?.trim().toLowerCase() ?? "";
+    const type = method.type?.trim().toLowerCase() ?? "";
+    const object = method.object?.trim().toLowerCase() ?? "";
+    const serviceName = method.service_name?.trim().toLowerCase() ?? "";
+    const combined = `${productType} ${type} ${object} ${serviceName}`;
+
+    if (combined.includes("apple")) return "apple_pay";
+    if (combined.includes("google")) return "google_pay";
+    if (type === "spei" || object === "bank_transfer_payment") return "spei";
+    if (combined.includes("oxxo")) return "oxxo";
+    if (type === "cash" || object === "cash_payment") return "cash";
+    if (type === "credit") return "card_credit";
+    if (type === "debit") return "card_debit";
+    if (object === "card_payment" || type === "card") return "card";
+    return type || productType || null;
 }
 
 export type PaymentOrderSummary = {
@@ -111,6 +136,17 @@ function shopBaseUrl(): string {
         process.env.FRONTEND_URL?.trim();
     if (!value) {
         throw new ApiError(503, "ARCANA_SHOP_URL, SHOP_URL, or FRONTEND_URL is required for Conekta return URLs");
+    }
+    if (process.env.NODE_ENV === "production") {
+        let url: URL;
+        try {
+            url = new URL(value);
+        } catch {
+            throw new ApiError(503, "ARCANA_SHOP_URL must be a valid HTTPS URL in production");
+        }
+        if (url.protocol !== "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+            throw new ApiError(503, "ARCANA_SHOP_URL must be a public HTTPS URL in production");
+        }
     }
     return value.replace(/\/$/, "");
 }
@@ -368,14 +404,16 @@ export async function handleConektaOrder(orderId: string): Promise<void> {
     const remote = await conektaRequest<ConektaOrderResponse>(`/orders/${encodeURIComponent(orderId)}`, { method: "GET" });
     const paymentStatus = mapConektaStatus(remote.payment_status);
     if (!paymentStatus || remote.currency !== "MXN" || remote.livemode) return;
+    const paymentChannel = getConektaPaymentChannel(remote);
 
+    await ensureConektaPaymentSchema();
     await ensureInventoryReservationTable();
     const conn = await pool.getConnection();
     let confirmedOrders: PaymentOrderSocketRow[] = [];
     try {
         await conn.beginTransaction();
-        const [payments] = await conn.query<(RowDataPacket & { pay_id: number; payment_status: string; amount_total: number })[]>(
-            "SELECT pay_id, payment_status, amount_total FROM Payments WHERE payment_ref = ? AND payment_method = 'conekta' LIMIT 1 FOR UPDATE",
+        const [payments] = await conn.query<(RowDataPacket & { pay_id: number; payment_status: string; amount_total: number; payment_channel: string | null })[]>(
+            "SELECT pay_id, payment_status, amount_total, payment_channel FROM Payments WHERE payment_ref = ? AND payment_method = 'conekta' LIMIT 1 FOR UPDATE",
             [remote.id]
         );
         const local = payments[0];
@@ -383,7 +421,16 @@ export async function handleConektaOrder(orderId: string): Promise<void> {
             await conn.rollback();
             return;
         }
-        if (local.payment_status === "paid" || (local.payment_status === "failed" && paymentStatus !== "paid")) {
+        if (local.payment_status === "paid") {
+            if (!local.payment_channel && paymentChannel) {
+                await conn.query("UPDATE Payments SET payment_channel = ? WHERE pay_id = ?", [paymentChannel, local.pay_id]);
+                await conn.commit();
+            } else {
+                await conn.rollback();
+            }
+            return;
+        }
+        if (local.payment_status === "failed" && paymentStatus !== "paid") {
             await conn.rollback();
             return;
         }
@@ -407,8 +454,8 @@ export async function handleConektaOrder(orderId: string): Promise<void> {
         }
 
         await conn.query(
-            "UPDATE Payments SET payment_status = ?, payment_ref = ?, paid_at = ? WHERE pay_id = ?",
-            [paymentStatus, remote.id, paymentStatus === "paid" ? new Date() : null, local.pay_id]
+            "UPDATE Payments SET payment_status = ?, payment_ref = ?, payment_channel = COALESCE(?, payment_channel), paid_at = ? WHERE pay_id = ?",
+            [paymentStatus, remote.id, paymentChannel, paymentStatus === "paid" ? new Date() : null, local.pay_id]
         );
 
         if (paymentStatus === "paid") {
@@ -504,7 +551,9 @@ export async function syncConektaPayment(uId: number, orderIds: number[]): Promi
 
 // Reconcile asynchronous cash/SPEI payments even when a webhook was delayed or missed.
 let lastReconciledPayId = 0;
+let lastChannelBackfillPayId = Number.MAX_SAFE_INTEGER;
 export async function reconcilePendingConektaPayments(limit = 50): Promise<number> {
+    await ensureConektaPaymentSchema();
     const [rows] = await pool.query<(RowDataPacket & { pay_id: number; payment_ref: string })[]>(
         `SELECT p.pay_id, p.payment_ref
          FROM Payments p
@@ -536,6 +585,29 @@ export async function reconcilePendingConektaPayments(limit = 50): Promise<numbe
             reconciled++;
         } catch (error) {
             console.error(`[payments] Conekta reconciliation failed for ${row.payment_ref}:`, error);
+        }
+    }
+
+    const [missingChannels] = await pool.query<(RowDataPacket & { pay_id: number; payment_ref: string })[]>(
+        `SELECT pay_id, payment_ref
+         FROM Payments
+         WHERE payment_method = 'conekta'
+           AND payment_status = 'paid'
+           AND payment_channel IS NULL
+           AND payment_ref IS NOT NULL
+           AND pay_id < ?
+         ORDER BY pay_id DESC
+         LIMIT ?`,
+        [lastChannelBackfillPayId, limit]
+    );
+    if (!missingChannels.length) lastChannelBackfillPayId = Number.MAX_SAFE_INTEGER;
+    for (const row of missingChannels) {
+        lastChannelBackfillPayId = Number(row.pay_id);
+        try {
+            await handleConektaOrder(row.payment_ref);
+            reconciled++;
+        } catch (error) {
+            console.error(`[payments] Conekta channel backfill failed for ${row.payment_ref}:`, error);
         }
     }
     return reconciled;
@@ -590,17 +662,65 @@ export async function createConektaRefund(input: {
     amount?: number;
 }): Promise<ConektaOrderResponse> {
     if (!input.orderId.trim()) throw new ApiError(400, "ไม่พบ Conekta order id สำหรับคืนเงิน");
+    const orderId = input.orderId.trim();
+    const order = await conektaRequest<ConektaOrderResponse>(
+        `/orders/${encodeURIComponent(orderId)}`,
+        { method: "GET" }
+    );
+    if (order.currency !== "MXN" || !["paid", "partially_refunded"].includes(order.payment_status ?? "")) {
+        throw new ApiError(409, "La orden de Conekta no está pagada, ya fue reembolsada o no usa MXN.");
+    }
+
+    const paymentChannel = getConektaPaymentChannel(order);
+    const automaticRefundChannels = new Set(["card", "card_credit", "card_debit", "apple_pay", "google_pay"]);
+    if (!paymentChannel || !automaticRefundChannels.has(paymentChannel)) {
+        throw new ApiError(409, "Este método de pago requiere un reembolso manual al cliente.", {
+            code: "manual_refund_required",
+            payment_type: paymentChannel ?? "unknown",
+        });
+    }
+
+    const refundableCharges = (order.charges?.data ?? []).filter((charge) => {
+        const remaining = Number(charge.amount) - Number(charge.amount_refunded ?? 0);
+        return remaining > 0 && ["paid", "partially_refunded"].includes(charge.status ?? "");
+    });
+    if (order.is_refundable === false || refundableCharges.some((charge) => charge.is_refundable === false)) {
+        const paymentType = refundableCharges[0]?.payment_method?.type ?? order.charges?.data?.[0]?.payment_method?.type ?? "unknown";
+        throw new ApiError(409, "Conekta no admite el reembolso automático de este método de pago.", {
+            code: "manual_refund_required",
+            payment_type: paymentType,
+        });
+    }
+    if (refundableCharges.length !== 1 || !refundableCharges[0]?.id) {
+        throw new ApiError(409, "La orden no tiene un único cargo pagado que pueda reembolsarse automáticamente.", {
+            code: "manual_refund_required",
+        });
+    }
+
+    const alreadyRefunded = Number(order.amount_refunded ?? 0);
+    const refundableAmount = Number(order.amount) - alreadyRefunded;
+    const requestedAmount = input.amount == null ? refundableAmount : Math.round(input.amount * 100);
+    if (!Number.isInteger(requestedAmount) || requestedAmount <= 0 || requestedAmount > refundableAmount) {
+        throw new ApiError(400, "El monto del reembolso de Conekta no es válido.");
+    }
+
     const body = JSON.stringify({
         reason: "requested_by_client",
-        ...(input.amount != null ? { amount: Math.round(input.amount * 100) } : {}),
+        amount: requestedAmount,
+        // Conekta requires charge_id for partial refunds. HostedPayment creates one paid charge.
+        ...(requestedAmount < Number(order.amount) ? { charge_id: refundableCharges[0].id } : {}),
     });
-    return conektaRequest<ConektaOrderResponse>(
-        `/orders/${encodeURIComponent(input.orderId.trim())}/refunds`,
+    const refunded = await conektaRequest<ConektaOrderResponse>(
+        `/orders/${encodeURIComponent(orderId)}/refunds`,
         {
             method: "POST",
             body,
         }
     );
+    if (Number(refunded.amount_refunded ?? 0) < alreadyRefunded + requestedAmount) {
+        throw new ApiError(502, "Conekta aceptó la solicitud, pero no confirmó el monto reembolsado.", refunded);
+    }
+    return refunded;
 }
 
 export function verifyConektaWebhookSignature(rawBody: Buffer | undefined, digest: string | undefined): boolean {

@@ -6,7 +6,7 @@ import type { AdminOrderDTO, AdminOrderSummaryDTO, AdminSalesByBuyerReportDTO, A
 import * as couponService from "../coupons/coupon.service.js";
 import * as shippingService from "../shipping/shipping.service.js";
 import type { CalculateResult } from "../shipping/shipping.type.js";
-import { chargeAndRecordPayment, createConektaRefund, handleConektaOrder } from "../payments/payment.service.js";
+import { chargeAndRecordPayment, createConektaRefund, ensureConektaPaymentSchema, handleConektaOrder } from "../payments/payment.service.js";
 import type { PaymentResultDTO } from "../payments/payment.type.js";
 import {
     createSkydropxShipment,
@@ -1710,6 +1710,7 @@ export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO
 export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<AdminOrderDTO[]> {
     await ensureOrderShipmentLabelColumn();
     await ensureRefundMethodColumn();
+    await ensureConektaPaymentSchema();
 
     const params: number[] = [];
     const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "WHERE o.st_id = ?";
@@ -1729,6 +1730,12 @@ export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<Adm
             latest_refund.updated_at AS refund_updated_at,
             latest_refund.status AS refund_status,
             latest_refund.refund_method AS refund_method,
+            (SELECT p.payment_channel
+             FROM Payment_orders po
+             INNER JOIN Payments p ON p.pay_id = po.pay_id
+             WHERE po.or_id = o.or_id
+             ORDER BY p.pay_id DESC
+             LIMIT 1) AS payment_channel,
             o.subtotal, o.discount_total, o.shipping_fee,
             o.provider_shipping_cost,
             o.shipping_sc_id,
