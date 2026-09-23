@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../db/pool.js";
 import { ApiError } from "../../shared/errors/ApiError.js";
+import { getIO } from "../../socket/socket.js";
 import { ensureOrderShipmentTables } from "../orders/orders.schema.js";
 
 function record(value: unknown): Record<string, unknown> {
@@ -44,10 +45,17 @@ export async function handleSkydropxWebhook(payload: unknown) {
   const status = text(attrs.returned_status, attrs.status, data.status);
   if (!trackingNo || !status) return { matched: false };
 
-  const [rows] = await pool.query<(RowDataPacket & { os_id: number; or_id: number })[]>(
-    `SELECT os_id, or_id
-     FROM Order_shipments
-     WHERE tracking_no = ?
+  const [rows] = await pool.query<(RowDataPacket & {
+    os_id: number;
+    or_id: number;
+    st_id: number;
+    u_id: number | null;
+    order_no: string;
+  })[]>(
+    `SELECT osh.os_id, osh.or_id, o.st_id, o.u_id, o.order_no
+     FROM Order_shipments osh
+     INNER JOIN Orders o ON o.or_id = osh.or_id
+     WHERE osh.tracking_no = ?
      LIMIT 1`,
     [trackingNo]
   );
@@ -113,6 +121,35 @@ export async function handleSkydropxWebhook(payload: unknown) {
       [shipment.or_id]
     );
   }
+
+  try {
+    const payload = {
+      event: "order:shipment_updated",
+      actor: "skydropx",
+      created_at: new Date(),
+      order: {
+        or_id: shipment.or_id,
+        order_no: shipment.order_no,
+        st_id: shipment.st_id,
+        u_id: shipment.u_id,
+        tracking_no: trackingNo,
+        shipment_status: internalStatus,
+      },
+    };
+    const io = getIO();
+    io.to(`STORE_${shipment.st_id}`).emit("order:shipment_updated", payload);
+    io.to(`STORE_${shipment.st_id}`).emit("order:changed", payload);
+    if (shipment.u_id) {
+      io.to(`USER_${shipment.u_id}`).emit("order:shipment_updated", payload);
+      io.to(`USER_${shipment.u_id}`).emit("order:changed", payload);
+    }
+  } catch (error) {
+    // Database updates must still succeed if Socket.IO is temporarily unavailable.
+    console.warn("[shipping] emit Skydropx shipment update failed:", {
+      or_id: shipment.or_id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return { matched: true, or_id: shipment.or_id };
 }
-
