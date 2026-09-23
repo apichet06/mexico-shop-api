@@ -14,7 +14,7 @@ export function mapStatusToType(status: string) {
 }
 
 export function mapStatusToAction(status: string) {
-    // ข้อความนี้ถูกบันทึกทั้งในประวัติร้านและการแจ้งเตือน จึงใช้ภาษาสเปนเป็นภาษาหลัก
+    // Este texto se guarda tanto en el historial de la tienda como en las notificaciones, por eso se usa el español como idioma principal (ข้อความนี้ถูกบันทึกทั้งในประวัติร้านและการแจ้งเตือน จึงใช้ภาษาสเปนเป็นภาษาหลัก)
     const map: Record<string, string> = {
         PENDING: 'Solicitud de apertura de tienda enviada',
         PENDING_SELLER_CONFIRMATION: 'Pendiente de confirmación de datos y aviso de privacidad por el consignador',
@@ -29,7 +29,7 @@ export function mapStatusToAction(status: string) {
 }
 
 export function mapDocumetType(doc_type: string) {
-    // ชื่อเอกสารที่ใช้ประกอบข้อความแจ้งเตือนต้องถูกเก็บเป็นภาษาสเปน
+    // El nombre del documento usado en los mensajes de notificación debe guardarse en español (ชื่อเอกสารที่ใช้ประกอบข้อความแจ้งเตือนต้องถูกเก็บเป็นภาษาสเปน)
     const map: Record<string, string> = {
         VAT_CERT: 'Constancia de situación fiscal',
         COMPANY_CERT: 'Acta constitutiva de la empresa',
@@ -93,7 +93,7 @@ export interface StoreEmployeeInput {
     e_email: string;
     e_phone: string;
     e_status: EmployeeStatus;
-    e_password: string; // รหัสผ่านที่ถูก hash มาแล้วจาก controller
+    e_password: string; // Contraseña ya hasheada desde el controller (รหัสผ่านที่ถูก hash มาแล้วจาก controller)
 }
 
 export interface StoreTaxProfileDTO {
@@ -130,7 +130,7 @@ export interface CreateStoreRegisterInput {
     st_email: string;
     st_phone: string;
     st_image: string | null;
-    st_id: number; // ได้มาจาก token
+    st_id: number; // Obtenido del token (ได้มาจาก token)
     bk_id: number;
     tax_seller_type: SellerType;
     st_status: string;

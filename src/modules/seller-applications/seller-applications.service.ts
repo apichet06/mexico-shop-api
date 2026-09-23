@@ -82,14 +82,14 @@ export async function getApplicationSession(applicationId: number, accountId: nu
         [accountId],
     );
     const account = accountRows[0];
-    if (!account) throw new ApiError(404, "ไม่พบข้อมูลบัญชีสมัครผู้ขาย");
+    if (!account) throw new ApiError(404, "No se encontró la cuenta de solicitud de vendedor."); // "ไม่พบข้อมูลบัญชีสมัครผู้ขาย"
 
     const [applicationRows] = await pool.query<RawApplicationRow[]>(
         `SELECT * FROM seller_applications WHERE id = ? AND account_id = ? LIMIT 1`,
         [applicationId, accountId],
     );
     const application = applicationRows[0] ? await resetApplicationIfStoreWasDeleted(mapApplication(applicationRows[0])) : null;
-    if (!application) throw new ApiError(404, "ไม่พบข้อมูลใบสมัครผู้ขาย");
+    if (!application) throw new ApiError(404, "No se encontró la solicitud de vendedor."); // "ไม่พบข้อมูลใบสมัครผู้ขาย"
 
     return { account, application };
 }
@@ -185,7 +185,7 @@ export async function saveApplicationStep(input: {
 }): Promise<SellerApplicationDTO> {
     const session = await getApplicationSession(input.applicationId, input.accountId);
     if (session.application.is_finalized) {
-        throw new ApiError(400, "ใบสมัครนี้สร้างร้านแล้ว ไม่สามารถแก้ไข draft ได้");
+        throw new ApiError(400, "Esta solicitud ya generó una tienda; ya no se puede editar el borrador."); // "ใบสมัครนี้สร้างร้านแล้ว ไม่สามารถแก้ไข draft ได้"
     }
 
     const payload = {
@@ -220,7 +220,7 @@ export async function finalizeApplication(input: {
 }): Promise<SellerApplicationDTO> {
     const session = await getApplicationSession(input.applicationId, input.accountId);
     if (session.application.is_finalized) {
-        throw new ApiError(400, "ใบสมัครนี้สร้างร้านแล้ว");
+        throw new ApiError(400, "Esta solicitud ya generó una tienda."); // "ใบสมัครนี้สร้างร้านแล้ว"
     }
 
     const payload = input.payload
@@ -248,7 +248,7 @@ export async function verifyGoogleAccessToken(accessToken: string): Promise<OAut
     const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
         headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new ApiError(401, "Google token ไม่ถูกต้องหรือหมดอายุ");
+    if (!res.ok) throw new ApiError(401, "El token de Google no es válido o ha caducado."); // "Google token ไม่ถูกต้องหรือหมดอายุ"
     const data = await res.json() as {
         id?: string;
         email?: string;
@@ -256,7 +256,7 @@ export async function verifyGoogleAccessToken(accessToken: string): Promise<OAut
         name?: string;
         picture?: string;
     };
-    if (!data.id) throw new ApiError(401, "ไม่พบข้อมูลบัญชี Google");
+    if (!data.id) throw new ApiError(401, "No se encontró la información de la cuenta de Google."); // "ไม่พบข้อมูลบัญชี Google"
     return {
         provider: "GOOGLE",
         provider_user_id: data.id,
@@ -271,14 +271,14 @@ export async function verifyFacebookAccessToken(accessToken: string): Promise<OA
     const res = await fetch(
         `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${encodeURIComponent(accessToken)}`,
     );
-    if (!res.ok) throw new ApiError(401, "Facebook token ไม่ถูกต้องหรือหมดอายุ");
+    if (!res.ok) throw new ApiError(401, "El token de Facebook no es válido o ha caducado."); // "Facebook token ไม่ถูกต้องหรือหมดอายุ"
     const data = await res.json() as {
         id?: string;
         name?: string;
         email?: string;
         picture?: { data?: { url?: string } };
     };
-    if (!data.id) throw new ApiError(401, "ไม่พบข้อมูลบัญชี Facebook");
+    if (!data.id) throw new ApiError(401, "No se encontró la información de la cuenta de Facebook."); // "ไม่พบข้อมูลบัญชี Facebook"
     return {
         provider: "FACEBOOK",
         provider_user_id: data.id,

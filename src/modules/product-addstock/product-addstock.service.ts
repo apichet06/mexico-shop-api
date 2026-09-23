@@ -61,14 +61,14 @@ export async function addStock(data: AddStockProduct): Promise<number> {
         );
 
         if (updateRows.affectedRows === 0) {
-            throw new ApiError(404, "ไม่พบสินค้าในคลัง");
+            throw new ApiError(404, "No se encontró el producto en el almacén."); // "ไม่พบสินค้าในคลัง"
         }
 
         const inventoryRows = await InventoryRow(conn, pv_id, loc_id);
 
         const inv_id = inventoryRows[0]?.inv_id;
         if (!inv_id) {
-            throw new ApiError(404, "ไมพบ Inventory ID");
+            throw new ApiError(404, "No se encontró el Inventory ID."); // "ไมพบ Inventory ID"
         }
 
         await conn.query(
@@ -103,14 +103,14 @@ export async function reduceStock(data: ReduceStoskProduct): Promise<number> {
         );
 
         if (updateRows.affectedRows === 0) {
-            throw new ApiError(400, "สินค้าไม่เพียงพอสำหรับลดจำนวน");
+            throw new ApiError(400, "No hay suficiente stock del producto para reducir la cantidad."); // "สินค้าไม่เพียงพอสำหรับลดจำนวน"
         }
 
         const inventoryRows = await InventoryRow(conn, pv_id, loc_id);
 
         const inv_id = inventoryRows[0]?.inv_id;
         if (!inv_id) {
-            throw new ApiError(404, "ไม่พบ Inventory ID");
+            throw new ApiError(404, "No se encontró el Inventory ID."); // "ไม่พบ Inventory ID"
         }
 
         await conn.query(

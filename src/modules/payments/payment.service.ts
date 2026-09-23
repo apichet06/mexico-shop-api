@@ -193,7 +193,7 @@ async function getUserContact(conn: PoolConnection, uId: number): Promise<UserCo
          LEFT JOIN Orders o ON o.u_id = u.u_id
          WHERE u.u_id = ? ORDER BY o.or_id DESC LIMIT 1`, [uId]);
     const user = rows[0];
-    if (!user) throw new ApiError(404, "ไม่พบข้อมูลผู้ใช้");
+    if (!user) throw new ApiError(404, "No se encontró la información del usuario."); // "ไม่พบข้อมูลผู้ใช้"
     return user;
 }
 
@@ -207,7 +207,7 @@ async function createConektaOrder(input: {
     const backUrls = conektaReturnUrls();
     const phone = input.payer.shipping_phone?.replace(/\D/g, "").slice(-10);
     if (!input.payer.u_email || !phone || phone.length !== 10) {
-        throw new ApiError(400, "กรุณาระบุอีเมลและหมายเลขโทรศัพท์สำหรับการชำระเงิน");
+        throw new ApiError(400, "Debes indicar el correo electrónico y el número de teléfono para realizar el pago."); // "กรุณาระบุอีเมลและหมายเลขโทรศัพท์สำหรับการชำระเงิน"
     }
     const payload = {
         line_items: input.orders.map((order) => ({
@@ -266,14 +266,14 @@ async function getPayableOrdersForUpdate(
         [uId, orderIds]
     );
     if (rows.length !== orderIds.length) {
-        throw new ApiError(404, "พบคำสั่งซื้อบางรายการที่ไม่ใช่ของผู้ใช้ หรือไม่มีอยู่จริง");
+        throw new ApiError(404, "Algunos de los pedidos no pertenecen a este usuario o no existen."); // "พบคำสั่งซื้อบางรายการที่ไม่ใช่ของผู้ใช้ หรือไม่มีอยู่จริง"
     }
     const notPending = rows.find((order) => !BUYER_PAYABLE_STATUS_CODES.includes(order.status_code as OrderStatusCode));
-    if (notPending) throw new ApiError(400, `คำสั่งซื้อ ${notPending.order_no} ไม่ได้อยู่ในสถานะรอชำระเงิน`);
+    if (notPending) throw new ApiError(400, `El pedido ${notPending.order_no} no está en estado de pago pendiente.`); // "คำสั่งซื้อ ${notPending.order_no} ไม่ได้อยู่ในสถานะรอชำระเงิน"
 
     const now = Date.now();
     const expired = rows.find((order) => order.payment_expires_at && new Date(order.payment_expires_at).getTime() <= now);
-    if (expired) throw new ApiError(400, `คำสั่งซื้อ ${expired.order_no} หมดเวลาชำระเงินแล้ว`);
+    if (expired) throw new ApiError(400, `El pedido ${expired.order_no} ya superó el tiempo límite de pago.`); // "คำสั่งซื้อ ${expired.order_no} หมดเวลาชำระเงินแล้ว"
     return rows;
 }
 
@@ -291,7 +291,7 @@ function emitPaidOrderChanges(rows: PaymentOrderSocketRow[]) {
             io.to(`USER_${userId}`).emit("order:changed", { event: "order:paid", order_ids: orderIds, status_code: "CONFIRMED" });
         }
     } catch {
-        // Socket อาจยังไม่ถูกเริ่มระหว่าง test
+        // El socket puede que aún no se haya iniciado durante los tests (Socket อาจยังไม่ถูกเริ่มระหว่าง test)
     }
 }
 
@@ -300,9 +300,9 @@ export async function chargeAndRecordPayment(
     input: { u_id: number; payment_method: "conekta"; orders: PaymentOrderSummary[] }
 ): Promise<PaymentResultDTO> {
     await ensureConektaPaymentSchema();
-    if (!input.orders.length) throw new ApiError(400, "กรุณาระบุคำสั่งซื้อที่ต้องชำระเงิน");
+    if (!input.orders.length) throw new ApiError(400, "Debes indicar los pedidos que se van a pagar."); // "กรุณาระบุคำสั่งซื้อที่ต้องชำระเงิน"
     const amountTotal = roundMoney(input.orders.reduce((sum, order) => sum + Number(order.grand_total || 0), 0));
-    if (amountTotal <= 0) throw new ApiError(400, "ยอดชำระเงินไม่ถูกต้อง");
+    if (amountTotal <= 0) throw new ApiError(400, "El monto a pagar no es válido."); // "ยอดชำระเงินไม่ถูกต้อง"
 
     // Reuse a pending checkout for the same group of orders.
     const orderIds = input.orders.map((order) => order.or_id);
@@ -506,7 +506,7 @@ export async function handleConektaOrder(orderId: string): Promise<void> {
 
 export async function syncConektaPayment(uId: number, orderIds: number[]): Promise<PaymentResultDTO> {
     const uniqueIds = [...new Set(orderIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
-    if (!uniqueIds.length) throw new ApiError(400, "กรุณาระบุคำสั่งซื้อที่ต้องการตรวจสอบการชำระเงิน");
+    if (!uniqueIds.length) throw new ApiError(400, "Debes indicar los pedidos cuyo pago se desea verificar."); // "กรุณาระบุคำสั่งซื้อที่ต้องการตรวจสอบการชำระเงิน"
 
     const [rows] = await pool.query<(RowDataPacket & {
         pay_id: number;
@@ -524,7 +524,7 @@ export async function syncConektaPayment(uId: number, orderIds: number[]): Promi
         [uniqueIds, uId]
     );
     const payment = rows[0];
-    if (!payment) throw new ApiError(404, "ไม่พบรายการชำระเงิน Conekta ของคำสั่งซื้อนี้");
+    if (!payment) throw new ApiError(404, "No se encontró el registro de pago de Conekta para este pedido."); // "ไม่พบรายการชำระเงิน Conekta ของคำสั่งซื้อนี้"
 
     if (payment.payment_status === "pending" && payment.payment_ref) {
         await handleConektaOrder(payment.payment_ref);
@@ -636,7 +636,7 @@ export function startConektaReconciliationJob(intervalMs = 60_000): void {
 export async function createConektaCheckout(input: ConektaCheckoutInput): Promise<PaymentResultDTO> {
     await ensureInventoryReservationTable();
     const orderIds = [...new Set(input.order_ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
-    if (!orderIds.length) throw new ApiError(400, "กรุณาระบุคำสั่งซื้อที่ต้องชำระเงิน");
+    if (!orderIds.length) throw new ApiError(400, "Debes indicar los pedidos que se van a pagar."); // "กรุณาระบุคำสั่งซื้อที่ต้องชำระเงิน"
 
     const conn = await pool.getConnection();
     try {
@@ -661,7 +661,7 @@ export async function createConektaRefund(input: {
     orderId: string;
     amount?: number;
 }): Promise<ConektaOrderResponse> {
-    if (!input.orderId.trim()) throw new ApiError(400, "ไม่พบ Conekta order id สำหรับคืนเงิน");
+    if (!input.orderId.trim()) throw new ApiError(400, "No se encontró el Conekta order id para el reembolso."); // "ไม่พบ Conekta order id สำหรับคืนเงิน"
     const orderId = input.orderId.trim();
     const order = await conektaRequest<ConektaOrderResponse>(
         `/orders/${encodeURIComponent(orderId)}`,

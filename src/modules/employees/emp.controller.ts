@@ -73,7 +73,7 @@ export const login = asyncHandler(async (req, res) => {
     }
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-        throw new Error("JWT_SECRET is not defined(ไม่ได้ถูกกำหนดไว้)");
+        throw new Error("JWT_SECRET no está definido."); // "JWT_SECRET is not defined(ไม่ได้ถูกกำหนดไว้)"
     }
 
     const token = jwt.sign({

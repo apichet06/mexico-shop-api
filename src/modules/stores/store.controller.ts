@@ -141,7 +141,7 @@ export const DeleteDocumentFile = asyncHandler(async (req, res) => {
         try {
             fs.unlinkSync(fullOldImagePath);
         } catch (err: any) {
-            console.log("ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):", err.message);
+            console.log("No se pudo eliminar la imagen anterior (puede que el archivo no exista):", err.message); // "ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):"
         }
     }
     await store.DeleteDocumentFile(Number(doc_id));
@@ -173,7 +173,7 @@ export const CreateDocumentFormEdit = asyncHandler(async (req, res) => {
 
             const uploadedFiles = await Promise.all(
                 docFiles.map(async (file, idx) => {
-                    //  แปลง encoding ของชื่อไฟล์จาก latin1 → utf8
+                    // Convertir la codificación del nombre del archivo de latin1 a utf8 (แปลง encoding ของชื่อไฟล์จาก latin1 → utf8)
                     const fixedOriginalName = Buffer.from(file.originalname, "latin1").toString("utf8");
 
                     const movedPath = await fileUploadImage(file, `${meta.doc_type}_${Date.now()}_${idx}`, "documents");
@@ -182,7 +182,7 @@ export const CreateDocumentFormEdit = asyncHandler(async (req, res) => {
 
                     return {
                         file_path: movedPath,
-                        original_name: fixedOriginalName,  //   ใช้ตัวที่แก้แล้ว
+                        original_name: fixedOriginalName,  // Usa el valor ya corregido (ใช้ตัวที่แก้แล้ว)
                         mime_type: file.mimetype,
                         size: file.size,
                     };
@@ -219,13 +219,13 @@ export const createRegister = asyncHandler(async (req, res) => {
         const documentsMeta = JSON.parse(req.body.documents_meta ?? "[]");
 
         // const exists_company_name = await store.getStoreByCompanyName(req.body.st_company_name);
-        // if (exists_company_name) return res.status(400).json({ message: `${CommonMessages.isExits} ${req.body.st_company_name} กรุณาเปลี่ยนชื่อใหม่` });
+        // if (exists_company_name) return res.status(400).json({ message: `${CommonMessages.isExits} ${req.body.st_company_name} Elige un nombre nuevo` }); // "กรุณาเปลี่ยนชื่อใหม่"
 
         // const exists_email = await store.getStoreByCompanyName(req.body.st_email);
-        // if (exists_email) return res.status(400).json({ message: `${CommonMessages.isExits} {req.body.st_email} กรุณาเปลี่ยนอีเมลใหม่` });
+        // if (exists_email) return res.status(400).json({ message: `${CommonMessages.isExits} {req.body.st_email} Elige un correo electrónico nuevo` }); // "กรุณาเปลี่ยนอีเมลใหม่"
 
         // const exists_EmployeeEmail = await store.getEmployeeByEmail(employees[0]?.e_email);
-        // if (exists_EmployeeEmail) return res.status(400).json({ message: `${CommonMessages.isExits} ${employees[0]?.e_email} กรุณาเปลี่ยนอีเมลใหม่` });
+        // if (exists_EmployeeEmail) return res.status(400).json({ message: `${CommonMessages.isExits} ${employees[0]?.e_email} Elige un correo electrónico nuevo` }); // "กรุณาเปลี่ยนอีเมลใหม่"
 
         let stImagePath: string | null = null;
         const stImageFile = files?.st_image?.[0];
@@ -244,7 +244,7 @@ export const createRegister = asyncHandler(async (req, res) => {
 
                 const uploadedFiles = await Promise.all(
                     docFiles.map(async (file, idx) => {
-                        //  แปลง encoding ของชื่อไฟล์จาก latin1 → utf8
+                        // Convertir la codificación del nombre del archivo de latin1 a utf8 (แปลง encoding ของชื่อไฟล์จาก latin1 → utf8)
                         const fixedOriginalName = Buffer.from(file.originalname, "latin1").toString("utf8");
 
                         const movedPath = await fileUploadImage(file, `${meta.doc_type}_${Date.now()}_${idx}`, "documents");
@@ -253,7 +253,7 @@ export const createRegister = asyncHandler(async (req, res) => {
 
                         return {
                             file_path: movedPath,
-                            original_name: fixedOriginalName,  //   ใช้ตัวที่แก้แล้ว
+                            original_name: fixedOriginalName,  // Usa el valor ya corregido (ใช้ตัวที่แก้แล้ว)
                             mime_type: file.mimetype,
                             size: file.size,
                         };
@@ -493,14 +493,14 @@ export const update = asyncHandler(async (req, res) => {
     const empId = Number(req.empId);
     const file = req.file;
     const oldImage = await store.getStoreById(Number(st_id)).then(store => store?.store.st_image);
-    let imagePath = oldImage; // เริ่มต้นด้วยภาพเก่า
+    let imagePath = oldImage; // Se inicia con la imagen anterior (เริ่มต้นด้วยภาพเก่า)
     if (file) {
         if (oldImage) {
             const fullOldImagePath = pathfile.join(process.cwd(), 'uploads', oldImage);
             try {
                 await fs.unlinkSync(fullOldImagePath);
             } catch (err: any) {
-                console.log("ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):", err.message);
+                console.log("No se pudo eliminar la imagen anterior (puede que el archivo no exista):", err.message); // "ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):"
             }
         }
 
@@ -536,7 +536,7 @@ export const deleteStore = asyncHandler(async (req, res) => {
         try {
             fs.unlinkSync(fullOldImagePath);
         } catch (err: any) {
-            console.log("ลบรูปร้านไม่ได้ (อาจไม่มีไฟล์):", err.message);
+            console.log("No se pudo eliminar la imagen de la tienda (puede que el archivo no exista):", err.message); // "ลบรูปร้านไม่ได้ (อาจไม่มีไฟล์):"
         }
     }
 
@@ -546,7 +546,7 @@ export const deleteStore = asyncHandler(async (req, res) => {
             try {
                 fs.unlinkSync(pathfile.join(process.cwd(), 'public', docPath));
             } catch (err: any) {
-                console.log("ลบไฟล์เอกสารไม่ได้ (อาจไม่มีไฟล์):", err.message);
+                console.log("No se pudo eliminar el archivo del documento (puede que el archivo no exista):", err.message); // "ลบไฟล์เอกสารไม่ได้ (อาจไม่มีไฟล์):"
             }
         }
     }

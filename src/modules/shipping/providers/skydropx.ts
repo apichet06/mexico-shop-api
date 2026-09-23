@@ -66,7 +66,7 @@ function getBaseUrl() {
 
 function requiredEnv(name: "SKYDROPX_CLIENT_ID" | "SKYDROPX_CLIENT_SECRET") {
   const value = process.env[name]?.trim();
-  if (!value) throw new ApiError(400, `ยังไม่ได้ตั้งค่า ${name}`);
+  if (!value) throw new ApiError(400, `Todavía no se ha configurado ${name}.`); // `ยังไม่ได้ตั้งค่า ${name}`
   return value;
 }
 
@@ -124,7 +124,7 @@ function apiError(path: string, status: number, raw: unknown) {
   const messages = [...new Set(collectMessages(raw))];
   return new ApiError(
     status === 400 || status === 401 || status === 403 || status === 422 ? status : 502,
-    messages.join(", ") || `เรียก Skydropx API ไม่สำเร็จ (${status})`,
+    messages.join(", ") || `La llamada a la API de Skydropx falló (${status})`, // `เรียก Skydropx API ไม่สำเร็จ (${status})`
     { provider: "skydropx", path, httpStatus: status, raw }
   );
 }
@@ -154,7 +154,7 @@ async function getAccessToken(forceRefresh = false): Promise<string> {
 
   const payload = record(raw);
   const token = stringValue(payload.access_token, record(payload.data).access_token);
-  if (!token) throw new ApiError(502, "Skydropx ไม่ส่ง access token กลับมา", { provider: "skydropx", raw });
+  if (!token) throw new ApiError(502, "Skydropx no devolvió el access token.", { provider: "skydropx", raw }); // "Skydropx ไม่ส่ง access token กลับมา"
   const expiresIn = numberValue(payload.expires_in, record(payload.data).expires_in) ?? 7200;
   tokenCache = { token, expiresAt: Date.now() + Math.max(expiresIn, 60) * 1000 };
   return token;
@@ -290,7 +290,7 @@ export async function quoteSkydropxRates(input: SkydropxQuoteInput): Promise<Sky
     body: JSON.stringify(buildQuotation(input)),
   });
   const id = quotationId(created);
-  if (!id) throw new ApiError(502, "Skydropx ไม่ส่ง quotation id กลับมา", { provider: "skydropx", raw: created });
+  if (!id) throw new ApiError(502, "Skydropx no devolvió el quotation id.", { provider: "skydropx", raw: created }); // "Skydropx ไม่ส่ง quotation id กลับมา"
 
   let latest: unknown = created;
   const attempts = Math.min(Math.max(Number(process.env.SKYDROPX_QUOTE_POLL_ATTEMPTS) || 10, 1), 10);
@@ -354,10 +354,10 @@ export async function createSkydropxShipment(input: CreateShippingShipmentInput)
   const consignmentNote = process.env.SKYDROPX_CONSIGNMENT_NOTE?.trim();
   const packageType = process.env.SKYDROPX_PACKAGE_TYPE?.trim();
   if (!consignmentNote || !/^\d{8}$/.test(consignmentNote)) {
-    throw new ApiError(503, "กรุณาตั้งค่า SKYDROPX_CONSIGNMENT_NOTE เป็นรหัส Carta Porte 8 หลักของสินค้าที่จัดส่ง");
+    throw new ApiError(503, "Configura SKYDROPX_CONSIGNMENT_NOTE con el código de Carta Porte de 8 dígitos del producto que se va a enviar."); // "กรุณาตั้งค่า SKYDROPX_CONSIGNMENT_NOTE เป็นรหัส Carta Porte 8 หลักของสินค้าที่จัดส่ง"
   }
   if (!packageType) {
-    throw new ApiError(503, "กรุณาตั้งค่า SKYDROPX_PACKAGE_TYPE เป็นรหัสประเภทบรรจุภัณฑ์ของ Skydropx");
+    throw new ApiError(503, "Configura SKYDROPX_PACKAGE_TYPE con el código de tipo de empaque de Skydropx."); // "กรุณาตั้งค่า SKYDROPX_PACKAGE_TYPE เป็นรหัสประเภทบรรจุภัณฑ์ของ Skydropx"
   }
   const rates = await quoteSkydropxRates({
     from: input.from,
@@ -370,7 +370,7 @@ export async function createSkydropxShipment(input: CreateShippingShipmentInput)
   const rate = rates
     .filter((item) => item.courierCode === normalizedCarrier)
     .sort((a, b) => a.price - b.price)[0] ?? [...rates].sort((a, b) => a.price - b.price)[0];
-  if (!rate) throw new ApiError(400, `Skydropx ไม่มีราคาที่ใช้ได้สำหรับ ${input.courierCode}`);
+  if (!rate) throw new ApiError(400, `Skydropx no tiene una tarifa disponible para ${input.courierCode}.`); // `Skydropx ไม่มีราคาที่ใช้ได้สำหรับ ${input.courierCode}`
 
   let raw = await requestSkydropx("/api/v2/shipments", {
     method: "POST",
@@ -408,7 +408,7 @@ export async function createSkydropxShipment(input: CreateShippingShipmentInput)
       // Skydropx may not expose the newly accepted shipment immediately.
     }
   }
-  if (!tracking) throw new ApiError(502, "Skydropx รับคำขอสร้าง shipment แล้ว แต่เลข tracking ยังไม่พร้อม กรุณาตรวจ shipment ใน Skydropx ก่อนลองสร้างซ้ำ", { provider: "skydropx", providerShipmentId, raw });
+  if (!tracking) throw new ApiError(502, "Skydropx ya recibió la solicitud de creación del shipment, pero el número de tracking aún no está listo. Revisa el shipment en Skydropx antes de intentar crearlo de nuevo.", { provider: "skydropx", providerShipmentId, raw }); // "Skydropx รับคำขอสร้าง shipment แล้ว แต่เลข tracking ยังไม่พร้อม กรุณาตรวจ shipment ใน Skydropx ก่อนลองสร้างซ้ำ"
 
   return {
     purchaseId: null,

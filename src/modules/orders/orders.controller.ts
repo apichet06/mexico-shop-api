@@ -68,7 +68,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.");
     if (!locb_id) throw new ApiError(400, "Se requiere especificar locb_id (dirección de envío).");
 
-    // co_code เป็น optional: ถ้าไม่ส่งมา checkout จะสร้าง order แบบไม่ใช้คูปอง
+    // co_code es opcional: si no se envía, el checkout creará el order sin usar cupón (co_code เป็น optional: ถ้าไม่ส่งมา checkout จะสร้าง order แบบไม่ใช้คูปอง)
     const order = await service.createOrder({
         u_id,
         locb_id,

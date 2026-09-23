@@ -18,7 +18,7 @@ const translationJsonSchema = {
     required: ["es", "th", "en", "ja"],
 } as const;
 
-// ใช้ zod validate "หลังบ้าน" อีกชั้น (optional แต่ดี)
+// Usa zod para validar "en el backend" como capa adicional (opcional pero recomendable) (ใช้ zod validate "หลังบ้าน" อีกชั้น (optional แต่ดี))
 const TranslationSchema = z.object({
     es: z.string(),
     th: z.string(),
@@ -67,7 +67,7 @@ export async function translateNameGimini(
         ],
         config: {
             responseMimeType: "application/json",
-            responseSchema: translationJsonSchema, //  ใช้ตัวนี้ ชัวร์
+            responseSchema: translationJsonSchema, // usa este, es seguro (ใช้ตัวนี้ ชัวร์)
             temperature: 0.2,
         },
     });

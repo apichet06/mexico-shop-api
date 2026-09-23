@@ -53,7 +53,7 @@ const ADMIN_STATUS_TRANSITIONS: Record<string, OrderStatusCode> = {
 
 let autoReceiveJobStarted = false;
 
-// ปัดเศษจำนวนเงินให้เหลือ 2 ตำแหน่ง ใช้ตอนคำนวณยอด order/shipping/discount
+// Redondea el monto a 2 decimales; se usa al calcular totales de order/shipping/discount (ปัดเศษจำนวนเงินให้เหลือ 2 ตำแหน่ง ใช้ตอนคำนวณยอด order/shipping/discount)
 function roundMoney(value: number): number {
     return Math.round(value * 100) / 100;
 }
@@ -88,8 +88,8 @@ type CheckoutAddressRow = RowDataPacket & {
     subdistrict_name: string | null;
 };
 
-// สร้างเลข order รายวัน และ lock running ล่าสุดใน transaction เพื่อกันเลขซ้ำ
-// สร้างเลขคำสั่งซื้อไม่ซ้ำโดยอิงวันที่ปัจจุบันและ sequence รายวัน
+// Genera el número de order diario y bloquea el último running dentro de la transacción para evitar duplicados (สร้างเลข order รายวัน และ lock running ล่าสุดใน transaction เพื่อกันเลขซ้ำ)
+// Genera un número de pedido único basado en la fecha actual y una secuencia diaria (สร้างเลขคำสั่งซื้อไม่ซ้ำโดยอิงวันที่ปัจจุบันและ sequence รายวัน)
 async function generateOrderNo(conn: PoolConnection): Promise<string> {
     const now = new Date();
     const yyyymmdd =
@@ -110,7 +110,7 @@ async function generateOrderNo(conn: PoolConnection): Promise<string> {
     return `${prefix}${String(nextRunning).padStart(5, "0")}`;
 }
 
-// ใช้ select ชุดเดียวกันทั้ง detail และผลลัพธ์หลัง checkout เพื่อไม่ให้ response field เพี้ยนกัน
+// Usa el mismo select tanto en el detalle como en el resultado tras el checkout para que los campos de la respuesta no varíen (ใช้ select ชุดเดียวกันทั้ง detail และผลลัพธ์หลัง checkout เพื่อไม่ให้ response field เพี้ยนกัน)
 const orderSelectSql = `
     SELECT
         o.or_id,
@@ -208,7 +208,7 @@ const ADMIN_ALL_STORE_ID = 1;
 const PAYMENT_EXPIRE_MINUTES = Number(process.env.ORDER_PAYMENT_EXPIRE_MINUTES ?? 4320);
 let expirationJobStarted = false;
 
-// เช็คจาก Store.is_platform_store จริง แทนการอิง ADMIN_ALL_STORE_ID (=1) ตรงๆ เพราะ st_id ที่เป็น platform อาจไม่ใช่ 1 เสมอไปในอนาคต
+// Verifica con Store.is_platform_store real, en lugar de depender directamente de ADMIN_ALL_STORE_ID (=1), porque el st_id de la platform podría no ser siempre 1 en el futuro (เช็คจาก Store.is_platform_store จริง แทนการอิง ADMIN_ALL_STORE_ID (=1) ตรงๆ เพราะ st_id ที่เป็น platform อาจไม่ใช่ 1 เสมอไปในอนาคต)
 async function isPlatformStore(st_id: number): Promise<boolean> {
     const [rows] = await pool.query<RowDataPacket[]>(
         `SELECT is_platform_store FROM Store WHERE st_id = ? LIMIT 1`,
@@ -271,23 +271,23 @@ const statusLabelByCode: Record<string, string> = {
     REFUNDED: "Reembolsado",
 };
 
-// แจ้งเตือนถูกเก็บเป็นภาษาสเปน จึงเลือก label มาตรฐานก่อน label ที่มากับ query ภาษาอื่น
+// Las notificaciones se guardan en español, por lo que se prioriza el label estándar antes que el label que viene de un query en otro idioma (แจ้งเตือนถูกเก็บเป็นภาษาสเปน จึงเลือก label มาตรฐานก่อน label ที่มากับ query ภาษาอื่น)
 function getOrderStatusLabel(order: Partial<OrderDTO>) {
     const statusCode = order.status_code ?? "";
     return statusLabelByCode[statusCode] || order.status_label || statusCode || order.status || "-";
 }
 
-// สร้าง URL ไปหน้า order detail ฝั่งร้าน/backoffice
+// Genera la URL hacia la página de detalle de order del lado tienda/backoffice (สร้าง URL ไปหน้า order detail ฝั่งร้าน/backoffice)
 function getStoreOrderActionUrl(order: Pick<OrderDTO, "or_id">) {
     return `/dashboard/orders?order_id=${order.or_id}`;
 }
 
-// สร้าง URL ไปหน้า order detail ฝั่ง buyer
+// Genera la URL hacia la página de detalle de order del lado buyer (สร้าง URL ไปหน้า order detail ฝั่ง buyer)
 function getBuyerOrderActionUrl(order: Pick<OrderDTO, "or_id">) {
     return `/arcana/account/orders?order_id=${order.or_id}`;
 }
 
-// ประกอบ payload notification/socket สำหรับเหตุการณ์ของ order
+// Compone el payload de notification/socket para los eventos del order (ประกอบ payload notification/socket สำหรับเหตุการณ์ของ order)
 function buildOrderEventPayload(options: OrderNotificationOptions) {
     const { event, order, title, message, actor = "system" } = options;
 
@@ -313,7 +313,7 @@ function buildOrderEventPayload(options: OrderNotificationOptions) {
     };
 }
 
-// บันทึก notification ลง DB ให้เป้าหมายที่เกี่ยวข้อง เช่น buyer หรือร้านค้า
+// Guarda la notification en la DB para los destinatarios relacionados, como el buyer o la tienda (บันทึก notification ลง DB ให้เป้าหมายที่เกี่ยวข้อง เช่น buyer หรือร้านค้า)
 async function createOrderNotification(target: OrderNotificationTarget, options: OrderNotificationOptions) {
     const { order, event, title, message, priority = "NORMAL" } = options;
     const targetId = target === "STORE" ? Number(order.st_id) : Number(order.u_id);
@@ -332,25 +332,25 @@ async function createOrderNotification(target: OrderNotificationTarget, options:
     });
 }
 
-// ส่ง notification และ emit socket เมื่อ order มีเหตุการณ์สำคัญ
+// Envía la notification y emite el socket cuando el order tiene un evento importante (ส่ง notification และ emit socket เมื่อ order มีเหตุการณ์สำคัญ)
 async function notifyOrderEvent(options: OrderNotificationOptions) {
     const targets = options.targets ?? ["STORE", "USER"];
     const payload = buildOrderEventPayload(options);
 
     try {
-        // บันทึก notification ลงฐานข้อมูลก่อน เพื่อให้ผู้ใช้ที่ offline กลับมาเห็นย้อนหลังได้
-        // CreateNotification จะ emit notification:new ไปยัง room เป้าหมายให้อยู่แล้ว
+        // Guarda primero la notification en la base de datos, para que el usuario que estaba offline pueda verla después (บันทึก notification ลงฐานข้อมูลก่อน เพื่อให้ผู้ใช้ที่ offline กลับมาเห็นย้อนหลังได้)
+        // CreateNotification ya se encarga de emitir notification:new hacia el room de destino (CreateNotification จะ emit notification:new ไปยัง room เป้าหมายให้อยู่แล้ว)
         for (const target of targets) {
             try {
                 await createOrderNotification(target, options);
             } catch (error) {
-                // ถ้า notification ราย target ใดล้มเหลว ให้ target อื่นและ realtime event ยังเดินต่อได้
+                // Si la notification de algún target falla, los demás targets y el realtime event deben seguir funcionando (ถ้า notification ราย target ใดล้มเหลว ให้ target อื่นและ realtime event ยังเดินต่อได้)
                 console.warn(`[orders] create notification ${options.event} for ${target} failed:`, error);
             }
         }
 
-        // Emit realtime event เพิ่มอีกชั้นสำหรับหน้า orders/dashboard ที่อยาก update state ทันที
-        // ใช้ทั้ง event เฉพาะและ order:changed เพื่อให้ frontend เลือก subscribe ได้ง่าย
+        // Emite una capa adicional de realtime event para las páginas orders/dashboard que quieren actualizar el state de inmediato (Emit realtime event เพิ่มอีกชั้นสำหรับหน้า orders/dashboard ที่อยาก update state ทันที)
+        // Usa tanto el event específico como order:changed para que el frontend pueda suscribirse fácilmente (ใช้ทั้ง event เฉพาะและ order:changed เพื่อให้ frontend เลือก subscribe ได้ง่าย)
         const io = getIO();
         io.to(`STORE_${options.order.st_id}`).emit(options.event, payload);
         io.to(`STORE_${options.order.st_id}`).emit("order:changed", payload);
@@ -359,19 +359,19 @@ async function notifyOrderEvent(options: OrderNotificationOptions) {
             io.to(`USER_${options.order.u_id}`).emit("order:changed", payload);
         }
     } catch (error) {
-        // ห้ามให้ notification/socket ทำให้ order action ที่ commit แล้วล้มเหลว
+        // No se debe permitir que la notification/socket haga fallar una order action que ya hizo commit (ห้ามให้ notification/socket ทำให้ order action ที่ commit แล้วล้มเหลว)
         console.warn(`[orders] notify ${options.event} failed:`, error);
     }
 }
 
-// ส่ง notification หลายรายการแบบเรียงลำดับ ใช้กับ batch job หรือหลาย order
+// Envía varias notifications en secuencia; se usa en batch jobs o con múltiples orders (ส่ง notification หลายรายการแบบเรียงลำดับ ใช้กับ batch job หรือหลาย order)
 async function notifyManyOrderEvents(orders: OrderNotificationOptions[]) {
     for (const orderNotification of orders) {
         await notifyOrderEvent(orderNotification);
     }
 }
 
-// แจ้งเตือน platform store เมื่อ Conekta คืนเงินไม่สำเร็จและต้องโอนคืนเอง
+// Notifica a la tienda de la plataforma cuando el reembolso de Conekta falla y debe transferirse manualmente (แจ้งเตือน platform store เมื่อ Conekta คืนเงินไม่สำเร็จและต้องโอนคืนเอง)
 async function notifyPlatformManualRefundNeeded(order: Pick<OrderDTO, "or_id" | "order_no" | "st_company_name">) {
     try {
         await notificationService.NotifyPlatformStores({
@@ -385,12 +385,12 @@ async function notifyPlatformManualRefundNeeded(order: Pick<OrderDTO, "or_id" | 
             priority: "HIGH",
         });
     } catch (error) {
-        // ห้ามให้ notification ทำให้ order action ที่ commit แล้วล้มเหลว
+        // No se debe permitir que la notification haga fallar una order action que ya hizo commit (ห้ามให้ notification ทำให้ order action ที่ commit แล้วล้มเหลว)
         console.warn("[orders] notify platform manual refund needed failed:", error);
     }
 }
 
-// คำนวณเวลาหมดอายุการชำระเงินของ order pending
+// Calcula el tiempo de expiración del pago de un order pending (คำนวณเวลาหมดอายุการชำระเงินของ order pending)
 function buildPaymentExpiresAt(): Date {
     // Conekta HostedPayment requires a checkout validity of at least two days.
     const minutes = Number.isFinite(PAYMENT_EXPIRE_MINUTES) && PAYMENT_EXPIRE_MINUTES > 0
@@ -399,7 +399,7 @@ function buildPaymentExpiresAt(): Date {
     return new Date(Date.now() + minutes * 60 * 1000);
 }
 
-// ดึงรายการสินค้าใน order หลายรายการ แล้วจัดกลุ่มตาม or_id
+// Obtiene los items de varios orders y los agrupa por or_id (ดึงรายการสินค้าใน order หลายรายการ แล้วจัดกลุ่มตาม or_id)
 async function getOrderItems(orIds: number[], lg_code = "es"): Promise<Map<number, OrderItemDTO[]>> {
     const itemMap = new Map<number, OrderItemDTO[]>();
     if (!orIds.length) return itemMap;
@@ -409,7 +409,7 @@ async function getOrderItems(orIds: number[], lg_code = "es"): Promise<Map<numbe
         [lg_code, orIds]
     );
 
-    // annotate refunded_qty แบบ bulk ในคำสั่งเดียว (ไม่ query แยกต่อออเดอร์) เพื่อให้หน้า list ของ buyer เห็นด้วยว่าแต่ละ item คืนไปแล้วเท่าไหร่
+    // Anota refunded_qty en bulk con una sola consulta (sin query separado por orden) para que la lista del buyer también muestre cuánto se devolvió de cada item (annotate refunded_qty แบบ bulk ในคำสั่งเดียว (ไม่ query แยกต่อออเดอร์) เพื่อให้หน้า list ของ buyer เห็นด้วยว่าแต่ละ item คืนไปแล้วเท่าไหร่)
     const [refundedRows] = await pool.query<(RowDataPacket & { oi_id: number; refunded_qty: number })[]>(
         `SELECT ri.oi_id, SUM(ri.qty) AS refunded_qty
          FROM Refund_items ri
@@ -429,7 +429,7 @@ async function getOrderItems(orIds: number[], lg_code = "es"): Promise<Map<numbe
     return itemMap;
 }
 
-// สร้างกลุ่ม shipment เริ่มต้นให้ order ตามร้าน/สินค้า เพื่อเตรียมข้อมูลจัดส่ง
+// Crea los grupos de shipment iniciales para el order según tienda/producto, para preparar los datos de envío (สร้างกลุ่ม shipment เริ่มต้นให้ order ตามร้าน/สินค้า เพื่อเตรียมข้อมูลจัดส่ง)
 async function createShipmentGroupsForOrders(conn: PoolConnection, orderIds: number[]): Promise<void> {
     if (!orderIds.length) return;
     await ensureOrderShipmentTables();
@@ -513,7 +513,7 @@ async function createShipmentGroupsForOrders(conn: PoolConnection, orderIds: num
         const running = (runningByOrder.get(orderId) ?? 0) + 1;
         runningByOrder.set(orderId, running);
 
-        // Snapshot ผู้ส่ง/ผู้รับ ณ ตอนสร้าง order เพื่อให้ label เก่าไม่เปลี่ยนตามการแก้ที่อยู่คลังหรือที่อยู่ลูกค้าในอนาคต
+        // Snapshot del remitente/destinatario al momento de crear el order, para que las labels antiguas no cambien si luego se edita la dirección del almacén o del cliente (Snapshot ผู้ส่ง/ผู้รับ ณ ตอนสร้าง order เพื่อให้ label เก่าไม่เปลี่ยนตามการแก้ที่อยู่คลังหรือที่อยู่ลูกค้าในอนาคต)
         const [result] = await conn.query<ResultSetHeader>(
             "INSERT INTO Order_shipments SET ?",
             [{
@@ -583,7 +583,7 @@ async function createShipmentGroupsForOrders(conn: PoolConnection, orderIds: num
     }
 }
 
-// แยก tracking code จาก tracking_no หรือ tracking_url ของ provider
+// Extrae el tracking code a partir de tracking_no o tracking_url del provider (แยก tracking code จาก tracking_no หรือ tracking_url ของ provider)
 function getProviderTrackingCodesFromShipment(shipment: Pick<OrderShipmentDTO, "tracking_no" | "tracking_url">): string[] {
     const codes: string[] = [];
     const trackingUrl = shipment.tracking_url?.trim();
@@ -604,19 +604,19 @@ function getProviderTrackingCodesFromShipment(shipment: Pick<OrderShipmentDTO, "
     return [...new Set(codes.map((code) => code.trim()).filter(Boolean))];
 }
 
-// แปลง description จากขนส่งให้เป็น title สั้นสำหรับแสดงใน timeline
+// Convierte la description de la paquetería en un title corto para mostrar en el timeline (แปลง description จากขนส่งให้เป็น title สั้นสำหรับแสดงใน timeline)
 function shipmentEventTitle(description: string) {
     const parts = description.split(",").map((part) => part.trim()).filter(Boolean);
     return parts.length > 1 ? parts[parts.length - 1] : description;
 }
 
-// แยกรายละเอียดเสริมจาก description ของขนส่ง ถ้ามีหลายส่วน
+// Separa el detalle adicional de la description de la paquetería, si tiene varias partes (แยกรายละเอียดเสริมจาก description ของขนส่ง ถ้ามีหลายส่วน)
 function shipmentEventDescription(description: string) {
     const parts = description.split(",").map((part) => part.trim()).filter(Boolean);
     return parts.length > 1 ? parts[0] : null;
 }
 
-// สร้าง hash กันบันทึก shipment event ซ้ำจากข้อมูล tracking เดิม
+// Genera un hash para evitar guardar shipment events duplicados a partir de los mismos datos de tracking (สร้าง hash กันบันทึก shipment event ซ้ำจากข้อมูล tracking เดิม)
 function eventHash(osId: number, state: ShippingTrackingState) {
     return crypto
         .createHash("sha256")
@@ -624,7 +624,7 @@ function eventHash(osId: number, state: ShippingTrackingState) {
         .digest("hex");
 }
 
-// sync tracking event จาก shipping provider และอัปเดต shipment/order เป็น delivered เมื่อขนส่งส่งสำเร็จ
+// Sincroniza el tracking event del shipping provider y actualiza shipment/order a delivered cuando la paquetería entrega con éxito (sync tracking event จาก shipping provider และอัปเดต shipment/order เป็น delivered เมื่อขนส่งส่งสำเร็จ)
 async function syncShipmentEventsFromProvider(orderIds: number[]): Promise<Map<number, string>> {
     const syncedStatuses = new Map<number, string>();
     if (!orderIds.length || process.env.SKYDROPX_TRACKING_SYNC_ON_READ === "false") return syncedStatuses;
@@ -730,7 +730,7 @@ async function syncShipmentEventsFromProvider(orderIds: number[]): Promise<Map<n
     return syncedStatuses;
 }
 
-// ดึง event tracking ของ order หลายรายการ แล้วจัดกลุ่มตาม or_id
+// Obtiene los tracking events de varios orders y los agrupa por or_id (ดึง event tracking ของ order หลายรายการ แล้วจัดกลุ่มตาม or_id)
 async function getShipmentEvents(orderIds: number[]): Promise<Map<number, ShipmentEventDTO[]>> {
     await ensureOrderShipmentTables();
 
@@ -782,7 +782,7 @@ async function getShipmentEvents(orderIds: number[]): Promise<Map<number, Shipme
     return eventMap;
 }
 
-// ดึงชื่อสถานะตามภาษา ใช้เติม status_label ใน response
+// Obtiene el nombre del estado según el idioma; se usa para llenar status_label en la response (ดึงชื่อสถานะตามภาษา ใช้เติม status_label ใน response)
 async function getStatusLangName(statusCode: string, lgCode: string): Promise<string | null> {
     const [rows] = await pool.query<(RowDataPacket & { s_name: string | null })[]>(
         `SELECT sl.s_name
@@ -796,12 +796,12 @@ async function getStatusLangName(statusCode: string, lgCode: string): Promise<st
     return rows[0]?.s_name ?? null;
 }
 
-// เช็ค flag สำหรับเปิด action จำลอง shipment ใน dev เท่านั้น
+// Verifica el flag para habilitar la action simulada de shipment solo en dev (เช็ค flag สำหรับเปิด action จำลอง shipment ใน dev เท่านั้น)
 function allowDevShipmentActions() {
     return process.env.ALLOW_DEV_SHIPMENT_ACTIONS === "true";
 }
 
-// ดึงข้อมูล shipment และ shipment items ของ order หลายรายการ
+// Obtiene los datos de shipment y shipment items de varios orders (ดึงข้อมูล shipment และ shipment items ของ order หลายรายการ)
 async function getOrderShipments(orderIds: number[]): Promise<Map<number, OrderShipmentDTO[]>> {
     await ensureOrderShipmentTables();
 
@@ -880,7 +880,7 @@ async function getOrderShipments(orderIds: number[]): Promise<Map<number, OrderS
     return shipmentMap;
 }
 
-// คืน usage ของ coupon เมื่อ order ถูกยกเลิกและเคยใช้คูปองไว้
+// Devuelve el usage del coupon cuando el order se cancela y se había usado un cupón (คืน usage ของ coupon เมื่อ order ถูกยกเลิกและเคยใช้คูปองไว้)
 async function restoreCouponUsageForCancelledOrder(conn: PoolConnection, order: OrderDTO): Promise<void> {
     if (!order.co_id) return;
 
@@ -907,7 +907,7 @@ async function restoreCouponUsageForCancelledOrder(conn: PoolConnection, order: 
     );
 }
 
-// หา cart ที่ active ของ buyer เพื่อใช้สร้าง order จากตะกร้า
+// Busca el cart activo del buyer para usarlo al crear el order desde el carrito (หา cart ที่ active ของ buyer เพื่อใช้สร้าง order จากตะกร้า)
 async function getActiveCartId(conn: PoolConnection, uId: number): Promise<number> {
     const [cartRows] = await conn.query<(RowDataPacket & { cart_id: number })[]>(
         "SELECT cart_id FROM Carts WHERE u_id = ? AND status = 'active' ORDER BY cart_id DESC LIMIT 1",
@@ -918,7 +918,7 @@ async function getActiveCartId(conn: PoolConnection, uId: number): Promise<numbe
     return cart.cart_id;
 }
 
-// ดึงสินค้าใน cart พร้อมข้อมูล variant/product/store สำหรับ checkout
+// Obtiene los productos del cart junto con los datos de variant/product/store para el checkout (ดึงสินค้าใน cart พร้อมข้อมูล variant/product/store สำหรับ checkout)
 async function getCheckoutCartItems(
     conn: PoolConnection,
     cartId: number,
@@ -989,7 +989,7 @@ async function deleteCheckedOutCartItems(
     );
 }
 
-// ดึงที่อยู่จัดส่งของ buyer สำหรับใช้สร้าง order และคำนวณขนส่ง
+// Obtiene la dirección de envío del buyer para crear el order y calcular el envío (ดึงที่อยู่จัดส่งของ buyer สำหรับใช้สร้าง order และคำนวณขนส่ง)
 async function getCheckoutAddress(conn: PoolConnection, uId: number, locbId: number): Promise<CheckoutAddressRow> {
     const [locRows] = await conn.query<CheckoutAddressRow[]>(
         `SELECT
@@ -1009,7 +1009,7 @@ async function getCheckoutAddress(conn: PoolConnection, uId: number, locbId: num
     return loc;
 }
 
-// ตรวจว่าคูปองเป็นของร้านใด เพื่อกันใช้คูปองข้ามร้านใน checkout หลายร้าน
+// Verifica a qué tienda pertenece el cupón, para evitar usarlo entre tiendas distintas en un checkout multi-tienda (ตรวจว่าคูปองเป็นของร้านใด เพื่อกันใช้คูปองข้ามร้านใน checkout หลายร้าน)
 async function getCouponStoreId(conn: PoolConnection, coCode: string): Promise<number> {
     const [rows] = await conn.query<(RowDataPacket & { st_id: number })[]>(
         "SELECT st_id FROM Coupon WHERE co_code = ? LIMIT 1",
@@ -1020,7 +1020,7 @@ async function getCouponStoreId(conn: PoolConnection, coCode: string): Promise<n
     return Number(coupon.st_id);
 }
 
-// แยกสินค้าใน cart ตามร้าน เพราะระบบสร้าง order แยกต่อร้าน
+// Separa los productos del cart por tienda, porque el sistema crea un order distinto por cada tienda (แยกสินค้าใน cart ตามร้าน เพราะระบบสร้าง order แยกต่อร้าน)
 function groupCartItemsByStore(items: CheckoutCartItemRow[]): Map<number, CheckoutCartItemRow[]> {
     const groups = new Map<number, CheckoutCartItemRow[]>();
     for (const item of items) {
@@ -1031,7 +1031,7 @@ function groupCartItemsByStore(items: CheckoutCartItemRow[]): Map<number, Checko
     return groups;
 }
 
-// รวมขนาด/น้ำหนักสินค้าในร้านเป็น package เดียวสำหรับขอราคา shipping
+// Combina el tamaño/peso de los productos de una tienda en un solo package para cotizar el shipping (รวมขนาด/น้ำหนักสินค้าในร้านเป็น package เดียวสำหรับขอราคา shipping)
 function buildShippingPackage(items: CheckoutCartItemRow[]) {
     const weightG = items.reduce((sum, item) => {
         return sum + positiveShipmentNumber(item.weight_g, "peso", item.p_name ?? String(item.pv_id)) * Number(item.qty);
@@ -1071,7 +1071,7 @@ type CheckoutShippingQuoteGroup = {
     items: CheckoutCartItemRow[];
 };
 
-// สร้างชุด quote ขนส่งของแต่ละร้านใน checkout โดยอิงที่อยู่ buyer และ location ร้าน
+// Genera el conjunto de quotes de envío de cada tienda en el checkout, basándose en la dirección del buyer y la location de la tienda (สร้างชุด quote ขนส่งของแต่ละร้านใน checkout โดยอิงที่อยู่ buyer และ location ร้าน)
 async function buildCheckoutShippingQuoteGroups(
     conn: PoolConnection,
     items: CheckoutCartItemRow[]
@@ -1129,7 +1129,7 @@ async function buildCheckoutShippingQuoteGroups(
                 items: [],
             };
 
-            // Quote ต้องใช้จำนวนตามคลังที่คาดว่าจะหยิบจริง ไม่ใช่ qty เต็มของ order item ทุกครั้ง
+            // El Quote debe usar la cantidad según el almacén del que realmente se espera surtir, no siempre el qty completo del order item (Quote ต้องใช้จำนวนตามคลังที่คาดว่าจะหยิบจริง ไม่ใช่ qty เต็มของ order item ทุกครั้ง)
             group.items.push({ ...item, qty: quoteQty } as CheckoutCartItemRow);
             groups.set(Number(row.loc_id), group);
             need -= quoteQty;
@@ -1143,7 +1143,7 @@ async function buildCheckoutShippingQuoteGroups(
     return Array.from(groups.values());
 }
 
-// คำนวณตัวเลือกขนส่งที่ใช้ได้สำหรับตะกร้าปัจจุบัน
+// Calcula las opciones de envío disponibles para el carrito actual (คำนวณตัวเลือกขนส่งที่ใช้ได้สำหรับตะกร้าปัจจุบัน)
 async function calculateCheckoutShippingOptions(
     conn: PoolConnection,
     loc: Pick<CheckoutAddressRow, "zip_code" | "locb_address" | "province_name" | "district_name" | "subdistrict_name">,
@@ -1174,11 +1174,11 @@ async function calculateCheckoutShippingOptions(
         })
     );
 
-    // หนึ่งร้านอาจถูกหยิบจากหลายคลัง จึงรวมราคาต่อ carrier ให้เป็นราคาที่ลูกค้าเห็นใน checkout
+    // Una tienda puede surtirse desde varios almacenes, por lo que se suman los precios por carrier para obtener el precio que el cliente ve en el checkout (หนึ่งร้านอาจถูกหยิบจากหลายคลัง จึงรวมราคาต่อ carrier ให้เป็นราคาที่ลูกค้าเห็นใน checkout)
     return mergeStoreShippingOptions(groupOptions);
 }
 
-// รวมตัวเลือกขนส่งจากหลายคลังให้เหลือรายการต่อ carrier
+// Combina las opciones de envío de varios almacenes en una sola lista por carrier (รวมตัวเลือกขนส่งจากหลายคลังให้เหลือรายการต่อ carrier)
 function mergeStoreShippingOptions(storeOptions: CalculateResult[][]): CalculateResult[] {
     if (!storeOptions.length) return [];
 
@@ -1200,8 +1200,8 @@ function mergeStoreShippingOptions(storeOptions: CalculateResult[][]): Calculate
         .filter((option) => option.is_active);
 }
 
-// เลือก shipping option ตามที่ buyer ส่งมา หรือ fallback เป็นตัวเลือกแรก
-// storeName ใช้ระบุในข้อความ error เพื่อบอก buyer ว่าร้านไหนมีปัญหา เมื่อตะกร้ามีหลายร้าน
+// Selecciona la shipping option según lo que envió el buyer, o usa la primera opción como fallback (เลือก shipping option ตามที่ buyer ส่งมา หรือ fallback เป็นตัวเลือกแรก)
+// storeName se usa en el mensaje de error para indicarle al buyer qué tienda tiene el problema, cuando el carrito tiene varias tiendas (storeName ใช้ระบุในข้อความ error เพื่อบอก buyer ว่าร้านไหนมีปัญหา เมื่อตะกร้ามีหลายร้าน)
 function pickShippingOption(options: CalculateResult[], shippingScId?: number | null, storeName?: string): CalculateResult {
     const availableOptions = options.filter((option) => option.price != null);
     if (!availableOptions.length) {
@@ -1219,7 +1219,7 @@ function pickShippingOption(options: CalculateResult[], shippingScId?: number | 
     return selected ?? availableOptions.sort((a, b) => Number(a.price) - Number(b.price))[0]!;
 }
 
-// คืนตัวเลือกขนส่งที่ buyer เลือกได้ก่อน checkout แยกเป็นรายร้าน เพราะแต่ละร้านอาจเปิดใช้ขนส่งคนละชุด
+// Devuelve las opciones de envío que el buyer puede elegir antes del checkout, separadas por tienda, porque cada tienda puede tener habilitado un conjunto distinto de envíos (คืนตัวเลือกขนส่งที่ buyer เลือกได้ก่อน checkout แยกเป็นรายร้าน เพราะแต่ละร้านอาจเปิดใช้ขนส่งคนละชุด)
 export async function getCheckoutShippingOptions(input: {
     u_id: number;
     locb_id: number;
@@ -1246,7 +1246,7 @@ export async function getCheckoutShippingOptions(input: {
     }
 }
 
-// สร้าง order จาก cart โดยยังไม่ charge เงิน ใช้กับ flow แยกจ่ายภายหลัง
+// Crea el order a partir del cart sin cobrar todavía; se usa en el flow de pago separado posterior (สร้าง order จาก cart โดยยังไม่ charge เงิน ใช้กับ flow แยกจ่ายภายหลัง)
 export async function createOrder(input: CreateOrderInput): Promise<OrderDetailDTO[]> {
     await ensureInventoryReservationTable();
     await ensureOrderShipmentLabelColumn();
@@ -1256,13 +1256,13 @@ export async function createOrder(input: CreateOrderInput): Promise<OrderDetailD
     try {
         await conn.beginTransaction();
 
-        // ดึง active cart
+        // Obtiene el cart activo (ดึง active cart)
         const cartId = await getActiveCartId(conn, input.u_id);
 
-        // ดึง cart items พร้อมข้อมูลสินค้า
+        // Obtiene los cart items junto con los datos del producto (ดึง cart items พร้อมข้อมูลสินค้า)
         const cartItems = await getCheckoutCartItems(conn, cartId, input.selected_ci_ids ?? []);
 
-        // ดึง shipping address
+        // Obtiene la dirección de envío (ดึง shipping address)
         const loc = await getCheckoutAddress(conn, input.u_id, input.locb_id);
 
         const storeGroups = Array.from(groupCartItemsByStore(cartItems).entries());
@@ -1365,11 +1365,11 @@ export async function createOrder(input: CreateOrderInput): Promise<OrderDetailD
             }
         }
 
-        // สร้าง order pending แล้วต้องกัน stock ทันที เพื่อไม่ให้ลูกค้าคนอื่นซื้อเกิน available_qty
+        // Al crear el order pending hay que reservar el stock de inmediato, para que otros clientes no compren más del available_qty (สร้าง order pending แล้วต้องกัน stock ทันที เพื่อไม่ให้ลูกค้าคนอื่นซื้อเกิน available_qty)
         await reserveInventoryForOrderItems(conn, reservationItems);
         await createShipmentGroupsForOrders(conn, createdOrderIds);
 
-        // เอาออกเฉพาะรายการที่ถูกเลือกไปสร้าง order แล้ว รายการที่ไม่เลือกต้องอยู่ใน cart ต่อ
+        // Solo se eliminan los items que ya se usaron para crear el order; los que no se seleccionaron deben permanecer en el cart (เอาออกเฉพาะรายการที่ถูกเลือกไปสร้าง order แล้ว รายการที่ไม่เลือกต้องอยู่ใน cart ต่อ)
         await deleteCheckedOutCartItems(conn, cartId, input.selected_ci_ids ?? []);
 
         const [remainingRows] = await conn.query<(RowDataPacket & { cnt: number })[]>(
@@ -1419,7 +1419,7 @@ export async function createOrder(input: CreateOrderInput): Promise<OrderDetailD
     }
 }
 
-// checkout แบบครบวงจร: สร้าง order, reserve stock, ใช้คูปอง และสร้าง payment
+// Checkout de flujo completo: crea el order, reserva el stock, aplica el cupón y crea el payment (checkout แบบครบวงจร: สร้าง order, reserve stock, ใช้คูปอง และสร้าง payment)
 export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders: OrderDetailDTO[]; payment: PaymentResultDTO }> {
     await ensureInventoryReservationTable();
     await ensureOrderShipmentLabelColumn();
@@ -1429,8 +1429,8 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
     try {
         await conn.beginTransaction();
 
-        // Checkout แบบจ่ายเงินใน transaction เดียว:
-        // ถ้าบัตรถูกปฏิเสธ transaction จะ rollback ทำให้ไม่เกิด order และ cart ยังอยู่เหมือนเดิม
+        // Checkout con pago dentro de una sola transaction: (Checkout แบบจ่ายเงินใน transaction เดียว:)
+        // Si la tarjeta es rechazada, la transaction hace rollback, así el order no se crea y el cart queda igual que antes (ถ้าบัตรถูกปฏิเสธ transaction จะ rollback ทำให้ไม่เกิด order และ cart ยังอยู่เหมือนเดิม)
         const cartId = await getActiveCartId(conn, input.u_id);
         const cartItems = await getCheckoutCartItems(conn, cartId, input.selected_ci_ids ?? []);
         const loc = await getCheckoutAddress(conn, input.u_id, input.locb_id);
@@ -1536,7 +1536,7 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
             }
         }
 
-        // Checkout Pro ยืนยันการชำระผ่าน webhook ภายหลัง จึง reserve stock ก่อน redirect
+        // Checkout Pro confirma el pago después mediante webhook, por eso se reserva el stock antes del redirect (Checkout Pro ยืนยันการชำระผ่าน webhook ภายหลัง จึง reserve stock ก่อน redirect)
         await reserveInventoryForOrderItems(conn, reservationItems);
         await createShipmentGroupsForOrders(conn, createdOrderIds);
 
@@ -1560,7 +1560,7 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
             throw new ApiError(400, "El pago no se pudo procesar. Inténtalo de nuevo.");
         }
 
-        // ลบ cart เฉพาะหลัง payment step ผ่านแล้วเท่านั้น
+        // El cart solo se elimina después de que el payment step se completa con éxito (ลบ cart เฉพาะหลัง payment step ผ่านแล้วเท่านั้น)
         await deleteCheckedOutCartItems(conn, cartId, input.selected_ci_ids ?? []);
 
         const [remainingRows] = await conn.query<(RowDataPacket & { cnt: number })[]>(
@@ -1615,7 +1615,7 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
     }
 }
 
-// ดึงรายการ order ของ buyer พร้อม items และ shipment events สำหรับหน้า "การซื้อของฉัน"
+// Obtiene la lista de orders del buyer junto con items y shipment events para la página 'Mis compras' (ดึงรายการ order ของ buyer พร้อม items และ shipment events สำหรับหน้า "การซื้อของฉัน")
 export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO & { item_count: number; items: OrderItemDTO[] })[]> {
     await ensureOrderShipmentLabelColumn();
 
@@ -1706,7 +1706,7 @@ export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO
     });
 }
 
-// ดึงรายการ order ฝั่งร้าน/backoffice ตามร้านที่ login อยู่
+// Obtiene la lista de orders del lado tienda/backoffice según la tienda con la que se inició sesión (ดึงรายการ order ฝั่งร้าน/backoffice ตามร้านที่ login อยู่)
 export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<AdminOrderDTO[]> {
     await ensureOrderShipmentLabelColumn();
     await ensureRefundMethodColumn();
@@ -1788,7 +1788,7 @@ export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<Adm
     return rows;
 }
 
-// สรุปยอด order หน้า dashboard ร้าน เช่น ยอดขายวันนี้และจำนวน order ตามสถานะ
+// Resume los totales de order en el dashboard de la tienda, como las ventas de hoy y la cantidad de orders por estado (สรุปยอด order หน้า dashboard ร้าน เช่น ยอดขายวันนี้และจำนวน order ตามสถานะ)
 export async function adminGetOrderSummary(st_id: number): Promise<AdminOrderSummaryDTO> {
     const params: number[] = [];
     const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "WHERE st_id = ?";
@@ -1823,7 +1823,7 @@ export async function adminGetOrderSummary(st_id: number): Promise<AdminOrderSum
     };
 }
 
-// รายงานยอดขายรวมตามช่วงวันที่ของร้าน ใช้ดูภาพรวมราย order
+// Reporte de ventas totales por rango de fechas de la tienda; se usa para ver el panorama general por order (รายงานยอดขายรวมตามช่วงวันที่ของร้าน ใช้ดูภาพรวมราย order)
 export async function adminGetSalesReport(
     st_id: number,
     filters: { start_date?: string; end_date?: string; lg_code?: string } = {}
@@ -1959,7 +1959,7 @@ export async function adminGetSalesReport(
     };
 }
 
-// รายงานยอดขายแยกตามสินค้าและ variant
+// Reporte de ventas desglosado por producto y variant (รายงานยอดขายแยกตามสินค้าและ variant)
 export async function adminGetSalesByProductReport(
     st_id: number,
     filters: { start_date?: string; end_date?: string; lg_code?: string } = {}
@@ -2040,7 +2040,7 @@ export async function adminGetSalesByProductReport(
         params
     );
 
-    // รายงานนี้ไม่คำนวณกำไร เพราะระบบไม่เก็บต้นทุนตามนโยบายความปลอดภัยของร้านค้า
+    // Este reporte no calcula la ganancia porque el sistema no guarda el costo, según la política de seguridad de la tienda (รายงานนี้ไม่คำนวณกำไร เพราะระบบไม่เก็บต้นทุนตามนโยบายความปลอดภัยของร้านค้า)
     const normalizedRows = rows.map((row) => ({
         ...row,
         p_id: Number(row.p_id ?? 0),
@@ -2077,7 +2077,7 @@ export async function adminGetSalesByProductReport(
     return { summary, rows: normalizedRows };
 }
 
-// รายงานยอดขายแยกตามหมวดหมู่สินค้า
+// Reporte de ventas desglosado por categoría de producto (รายงานยอดขายแยกตามหมวดหมู่สินค้า)
 export async function adminGetSalesByCategoryReport(
     st_id: number,
     filters: { start_date?: string; end_date?: string; lg_code?: string } = {}
@@ -2159,7 +2159,7 @@ export async function adminGetSalesByCategoryReport(
         params
     );
 
-    // รายงานตามหมวดใช้ยอดขายสุทธิเท่านั้น เพราะระบบไม่เก็บต้นทุนสินค้าเพื่อคำนวณกำไร
+    // El reporte por categoría usa solo las ventas netas, porque el sistema no guarda el costo del producto para calcular la ganancia (รายงานตามหมวดใช้ยอดขายสุทธิเท่านั้น เพราะระบบไม่เก็บต้นทุนสินค้าเพื่อคำนวณกำไร)
     const normalizedRows = rows.map((row) => ({
         ...row,
         c_id: Number(row.c_id ?? 0),
@@ -2197,7 +2197,7 @@ export async function adminGetSalesByCategoryReport(
     return { summary, rows: normalizedRows };
 }
 
-// รายงานยอดขายแยกตามลูกค้า ใช้ดู buyer ที่ซื้อเยอะหรือซื้อบ่อย
+// Reporte de ventas desglosado por cliente; se usa para ver los buyers que compran mucho o con frecuencia (รายงานยอดขายแยกตามลูกค้า ใช้ดู buyer ที่ซื้อเยอะหรือซื้อบ่อย)
 export async function adminGetSalesByBuyerReport(
     st_id: number,
     filters: { start_date?: string; end_date?: string } = {}
@@ -2331,7 +2331,7 @@ export async function adminGetSalesByBuyerReport(
     return { summary, rows: normalizedRows };
 }
 
-// ดึงรายละเอียด order ฝั่งร้าน รวม items, shipment และรูปหลักฐานคืนเงิน
+// Obtiene el detalle del order del lado tienda, incluyendo items, shipment y las imágenes de evidencia del reembolso (ดึงรายละเอียด order ฝั่งร้าน รวม items, shipment และรูปหลักฐานคืนเงิน)
 export async function adminGetOrderById(or_id: number, st_id: number, lg_code = "es"): Promise<AdminOrderDetailDTO | null> {
     await ensureOrderShipmentLabelColumn();
     await ensureOrderShipmentTables();
@@ -2468,7 +2468,7 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
     };
 }
 
-// ดึงรายละเอียด order ของ buyer รายเดียว พร้อม items และ shipment timeline
+// Obtiene el detalle de un solo order del buyer, junto con items y el shipment timeline (ดึงรายละเอียด order ของ buyer รายเดียว พร้อม items และ shipment timeline)
 export async function getOrderById(or_id: number, u_id: number, lg_code = "es"): Promise<OrderDetailDTO | null> {
     await ensureOrderShipmentLabelColumn();
     await ensureOrderShipmentTables();
@@ -2508,7 +2508,7 @@ export async function getOrderById(or_id: number, u_id: number, lg_code = "es"):
     };
 }
 
-// buyer ยืนยันรับสินค้าเอง เปลี่ยนสถานะจาก DELIVERED เป็น RECEIVED
+// El buyer confirma la recepción del producto por sí mismo, cambiando el estado de DELIVERED a RECEIVED (buyer ยืนยันรับสินค้าเอง เปลี่ยนสถานะจาก DELIVERED เป็น RECEIVED)
 export async function confirmOrderReceived(or_id: number, u_id: number, lg_code = "es"): Promise<OrderDetailDTO> {
     await ensureOrderShipmentLabelColumn();
 
@@ -2531,8 +2531,8 @@ export async function confirmOrderReceived(or_id: number, u_id: number, lg_code 
             if (!currentOrder) throw new ApiError(404, "No se encontró el pedido.");
             return currentOrder;
         }
-        // ยืนยันรับสินค้าได้แม้มีคำขอคืนสินค้าบางรายการค้าง (pending) อยู่ก็ตาม — แยกเรื่อง "ได้รับพัสดุแล้ว" ออกจากเรื่อง "กำลังคืนบางชิ้น" โดยสิ้นเชิง
-        // ไม่งั้นรายการที่ไม่เกี่ยวกับการคืนจะกดยืนยันรับสินค้าไม่ได้เลยจนกว่า admin จะเคลียร์คำขอคืนให้เสร็จ
+        // Se puede confirmar la recepción aunque existan solicitudes de devolución de algunos items todavía pendientes (pending) — se separa por completo el asunto de 'ya recibió el paquete' del asunto de 'está devolviendo algunas piezas' (ยืนยันรับสินค้าได้แม้มีคำขอคืนสินค้าบางรายการค้าง (pending) อยู่ก็ตาม — แยกเรื่อง "ได้รับพัสดุแล้ว" ออกจากเรื่อง "กำลังคืนบางชิ้น" โดยสิ้นเชิง)
+        // De lo contrario, los items que no tienen relación con la devolución no podrían confirmarse como recibidos hasta que el admin resuelva la solicitud de devolución (ไม่งั้นรายการที่ไม่เกี่ยวกับการคืนจะกดยืนยันรับสินค้าไม่ได้เลยจนกว่า admin จะเคลียร์คำขอคืนให้เสร็จ)
         if (order.status_code !== "DELIVERED" && order.status_code !== "RETURN_REQUESTED") {
             throw new ApiError(400, "Este pedido aún no se puede confirmar como recibido.");
         }
@@ -2567,7 +2567,7 @@ export async function confirmOrderReceived(or_id: number, u_id: number, lg_code 
     }
 }
 
-// buyer ยกเลิก order ที่ยังรอชำระ พร้อมคืน stock reserve และคืน usage คูปอง
+// El buyer cancela un order que aún está pendiente de pago, liberando el stock reservado y devolviendo el usage del cupón (buyer ยกเลิก order ที่ยังรอชำระ พร้อมคืน stock reserve และคืน usage คูปอง)
 export async function cancelOrder(or_id: number, u_id: number, reason: string, lg_code = "es"): Promise<OrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureOrderShipmentLabelColumn();
@@ -2593,7 +2593,7 @@ export async function cancelOrder(or_id: number, u_id: number, reason: string, l
             whereUserId: u_id,
         });
 
-        // ยกเลิก order pending แล้วต้องปล่อย stock ที่เคยกันไว้กลับเป็น available_qty
+        // Al cancelar un order pending hay que liberar el stock que se había reservado, devolviéndolo al available_qty (ยกเลิก order pending แล้วต้องปล่อย stock ที่เคยกันไว้กลับเป็น available_qty)
         await releaseReservationsForOrders(conn, [or_id]);
         await restoreCouponUsageForCancelledOrder(conn, order);
         await conn.commit();
@@ -2620,7 +2620,7 @@ export async function cancelOrder(or_id: number, u_id: number, reason: string, l
     }
 }
 
-// จำนวนต่อ oi_id ที่มีคำขอคืนคุ้มครองอยู่แล้ว (pending หรือ succeeded) ของ order นี้ ใช้คำนวณจำนวนที่เหลือคืนได้ (item.qty - protected)
+// Cantidad por oi_id que ya está protegida por una solicitud de devolución (pending o succeeded) de este order; se usa para calcular cuánto queda disponible para devolver (item.qty - protected) (จำนวนต่อ oi_id ที่มีคำขอคืนคุ้มครองอยู่แล้ว (pending หรือ succeeded) ของ order นี้ ใช้คำนวณจำนวนที่เหลือคืนได้ (item.qty - protected))
 async function getProtectedRefundQtyMap(conn: PoolConnection, or_id: number): Promise<Map<number, number>> {
     const [rows] = await conn.query<(RowDataPacket & { oi_id: number; qty: number })[]>(
         `SELECT ri.oi_id, SUM(ri.qty) AS qty
@@ -2633,7 +2633,7 @@ async function getProtectedRefundQtyMap(conn: PoolConnection, or_id: number): Pr
     return new Map(rows.map((row) => [Number(row.oi_id), Number(row.qty)]));
 }
 
-// เช็คว่าทุกรายการ (ทุกจำนวน) สินค้าในออเดอร์นี้ถูกคืนสำเร็จ (succeeded) ครบแล้วหรือยัง — ใช้ตัดสินว่าจะปิดสถานะออเดอร์แบบ terminal หรือคืนกลับ DELIVERED
+// Verifica si todos los items (todas las cantidades) del pedido ya fueron devueltos con éxito (succeeded) por completo — se usa para decidir si se cierra el estado del pedido en modo terminal o se regresa a DELIVERED (เช็คว่าทุกรายการ (ทุกจำนวน) สินค้าในออเดอร์นี้ถูกคืนสำเร็จ (succeeded) ครบแล้วหรือยัง — ใช้ตัดสินว่าจะปิดสถานะออเดอร์แบบ terminal หรือคืนกลับ DELIVERED)
 async function allOrderItemsReturned(conn: PoolConnection, or_id: number): Promise<boolean> {
     const [rows] = await conn.query<(RowDataPacket & { remaining: number })[]>(
         `SELECT COALESCE(SUM(GREATEST(oi.qty - COALESCE(returned.qty, 0), 0)), 0) AS remaining
@@ -2651,7 +2651,7 @@ async function allOrderItemsReturned(conn: PoolConnection, or_id: number): Promi
     return Number(rows[0]?.remaining ?? 0) === 0;
 }
 
-// ผูก refunded_qty (จำนวนที่มีคำขอคืน pending/succeeded คุ้มครองอยู่) เข้ากับแต่ละ item เพื่อให้ buyer/admin เห็นว่ารายการไหนคืนไปแล้ว
+// Vincula refunded_qty (la cantidad protegida por solicitudes de devolución pending/succeeded) a cada item, para que el buyer/admin vea qué items ya fueron devueltos (ผูก refunded_qty (จำนวนที่มีคำขอคืน pending/succeeded คุ้มครองอยู่) เข้ากับแต่ละ item เพื่อให้ buyer/admin เห็นว่ารายการไหนคืนไปแล้ว)
 async function annotateRefundedQty(items: OrderItemDTO[], or_id: number): Promise<OrderItemDTO[]> {
     if (items.length === 0) return items;
     const [rows] = await pool.query<(RowDataPacket & { oi_id: number; refunded_qty: number })[]>(
@@ -2666,7 +2666,7 @@ async function annotateRefundedQty(items: OrderItemDTO[], or_id: number): Promis
     return items.map((item) => ({ ...item, refunded_qty: refundedMap.get(item.oi_id) ?? 0 }));
 }
 
-// รายการสินค้าที่คำขอคืน (refund_id) ล่าสุดของออเดอร์ครอบคลุมอยู่ ใช้แสดงในหน้า admin/buyer ว่าคำขอปัจจุบันคืนรายการไหนบ้าง
+// Los items que cubre la última solicitud de devolución (refund_id) del pedido; se usa para mostrar en la página admin/buyer qué items cubre la solicitud actual (รายการสินค้าที่คำขอคืน (refund_id) ล่าสุดของออเดอร์ครอบคลุมอยู่ ใช้แสดงในหน้า admin/buyer ว่าคำขอปัจจุบันคืนรายการไหนบ้าง)
 async function getLatestRefundItems(refund_id: number | null | undefined): Promise<RefundItemDTO[]> {
     if (!refund_id) return [];
     const [rows] = await pool.query<(RowDataPacket & { oi_id: number; qty: number; amount: number; product_name: string; variant_name: string | null })[]>(
@@ -2686,7 +2686,7 @@ async function getLatestRefundItems(refund_id: number | null | undefined): Promi
     }));
 }
 
-// ประวัติคำขอคืนเงินทุกรอบของออเดอร์ (ไม่ใช่แค่รอบล่าสุด) พร้อมรายการสินค้าที่คืนในแต่ละรอบ ใช้แสดงในหน้า admin
+// Historial de todas las rondas de solicitudes de reembolso del pedido (no solo la última), junto con los items devueltos en cada ronda; se usa para mostrar en la página admin (ประวัติคำขอคืนเงินทุกรอบของออเดอร์ (ไม่ใช่แค่รอบล่าสุด) พร้อมรายการสินค้าที่คืนในแต่ละรอบ ใช้แสดงในหน้า admin)
 async function getRefundHistory(or_id: number): Promise<RefundHistoryEntryDTO[]> {
     const [refundRows] = await pool.query<(RowDataPacket & {
         refund_id: number;
@@ -2760,8 +2760,8 @@ async function getRefundHistory(or_id: number): Promise<RefundHistoryEntryDTO[]>
 
 export type RefundItemSelection = { oi_id: number; qty: number };
 
-// buyer ส่งคำขอคืนเงิน/คืนสินค้า พร้อมเหตุผล tracking คืน และรูปหลักฐาน
-// selectedItems: รายการ {oi_id, qty} ที่ต้องการคืน (เฉพาะตอนสถานะ DELIVERED เท่านั้นที่เลือกได้บางรายการ/บางจำนวน — สถานะอื่นถือเป็นการยกเลิกทั้งออเดอร์เหมือนเดิม)
+// El buyer envía la solicitud de reembolso/devolución, junto con el motivo, el tracking de devolución y las imágenes de evidencia (buyer ส่งคำขอคืนเงิน/คืนสินค้า พร้อมเหตุผล tracking คืน และรูปหลักฐาน)
+// selectedItems: la lista de {oi_id, qty} que se desea devolver (solo en el estado DELIVERED se puede elegir algunos items/cantidades parciales — en los demás estados se sigue tratando como cancelación de todo el pedido, igual que antes) (selectedItems: รายการ {oi_id, qty} ที่ต้องการคืน (เฉพาะตอนสถานะ DELIVERED เท่านั้นที่เลือกได้บางรายการ/บางจำนวน — สถานะอื่นถือเป็นการยกเลิกทั้งออเดอร์เหมือนเดิม))
 export async function requestRefund(or_id: number, u_id: number, reason: string, lg_code = "es", returnTracking = "", imageFiles: Express.Multer.File[] = [], selectedItems: RefundItemSelection[] = []): Promise<OrderDetailDTO> {
     await ensureRefundImagesTable();
     await ensureRefundReturnTrackingColumn();
@@ -2790,9 +2790,9 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
             throw new ApiError(400, "Ingresa el número de seguimiento del paquete devuelto.");
         }
 
-        // buyer ทำได้แค่สร้าง request pending เท่านั้น
-        // การคืนเงินจริงต้องดำเนินการฝั่งร้าน/admin หลังตรวจสอบคำขอแล้ว
-        // คำขอที่ยัง pending ต้องได้รับการอนุมัติ/ปฏิเสธก่อน ถึงจะยื่นคำขอใหม่ได้ (รายการที่คืนสำเร็จไปแล้วไม่บล็อกรายการอื่นที่เหลือ)
+        // El buyer solo puede crear un request en estado pending (buyer ทำได้แค่สร้าง request pending เท่านั้น)
+        // El reembolso real debe procesarse del lado de la tienda/admin, después de revisar la solicitud (การคืนเงินจริงต้องดำเนินการฝั่งร้าน/admin หลังตรวจสอบคำขอแล้ว)
+        // Una solicitud que sigue pending debe aprobarse/rechazarse primero, antes de poder enviar una nueva solicitud (los items ya devueltos con éxito no bloquean al resto) (คำขอที่ยัง pending ต้องได้รับการอนุมัติ/ปฏิเสธก่อน ถึงจะยื่นคำขอใหม่ได้ (รายการที่คืนสำเร็จไปแล้วไม่บล็อกรายการอื่นที่เหลือ))
         const [existingRefunds] = await conn.query<(RowDataPacket & { refund_id: number; status: string })[]>(
             "SELECT refund_id, status FROM Refunds WHERE or_id = ? AND status = 'pending' ORDER BY refund_id DESC LIMIT 1 FOR UPDATE",
             [or_id]
@@ -2809,7 +2809,7 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
 
         const itemsByOiId = new Map(itemRows.map((item) => [item.oi_id, item]));
         const protectedQtyMap = statusCode === "DELIVERED" ? await getProtectedRefundQtyMap(conn, or_id) : new Map<number, number>();
-        // includedItems: รายการที่จะบันทึกลง Refund_items จริง พร้อมจำนวนที่คืน (qty) และยอดเงินตามสัดส่วน (amount)
+        // includedItems: la lista que se guardará realmente en Refund_items, con la cantidad a devolver (qty) y el monto proporcional (amount) (includedItems: รายการที่จะบันทึกลง Refund_items จริง พร้อมจำนวนที่คืน (qty) และยอดเงินตามสัดส่วน (amount))
         let includedItems: { oi_id: number; qty: number; amount: number }[] = itemRows.map((item) => ({
             oi_id: item.oi_id,
             qty: item.qty,
@@ -2821,7 +2821,7 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
                 throw new ApiError(400, "Selecciona los productos que deseas devolver.");
             }
 
-            // รวมจำนวนต่อ oi_id กรณี frontend ส่งรายการเดียวกันมาซ้ำ
+            // Suma la cantidad por oi_id en caso de que el frontend envíe el mismo item repetido (รวมจำนวนต่อ oi_id กรณี frontend ส่งรายการเดียวกันมาซ้ำ)
             const qtyByOiId = new Map<number, number>();
             for (const sel of selectedItems) {
                 const oiId = Number(sel.oi_id);
@@ -2900,7 +2900,7 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
 
         await conn.commit();
 
-        // อัปโหลดรูปหลัง commit เพื่อไม่ให้ rollback ติด network error
+        // Sube las imágenes después del commit, para que el rollback no se bloquee por errores de red (อัปโหลดรูปหลัง commit เพื่อไม่ให้ rollback ติด network error)
         const refundImageUrls: string[] = [];
         if (imageFiles.length > 0) {
             const refundId = refundRes.insertId;
@@ -2952,7 +2952,7 @@ export async function requestRefund(or_id: number, u_id: number, reason: string,
     }
 }
 
-// admin อนุมัติคำขอคืนเงินและพยายาม refund ผ่าน Conekta อัตโนมัติ
+// El admin aprueba la solicitud de reembolso e intenta hacer el refund automáticamente a través de Conekta (admin อนุมัติคำขอคืนเงินและพยายาม refund ผ่าน Conekta อัตโนมัติ)
 export async function approveRefundRequest(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
@@ -2993,8 +2993,8 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
 
         const refund = rows[0];
         if (!refund) throw new ApiError(404, "No se encontró una solicitud de reembolso pendiente.");
-        // ถ้า order อยู่ RETURN_REQUESTED หรือ buyer ยืนยันรับสินค้า (RECEIVED-tier) ไปแล้วระหว่างที่คำขอนี้ยัง pending
-        // แสดงว่าเป็นคำขอคืนสินค้าที่ต้องรอตรวจสอบพัสดุที่ส่งคืนก่อน ต้องใช้ endpoint confirmReturnReceived แทน ไม่ใช่ endpoint นี้
+        // Si el order está en RETURN_REQUESTED, o si el buyer ya confirmó la recepción (RECEIVED-tier) mientras esta solicitud seguía pending (ถ้า order อยู่ RETURN_REQUESTED หรือ buyer ยืนยันรับสินค้า (RECEIVED-tier) ไปแล้วระหว่างที่คำขอนี้ยัง pending)
+        // Significa que es una solicitud de devolución que debe esperar la inspección del paquete devuelto primero; se debe usar el endpoint confirmReturnReceived en su lugar, no este endpoint (แสดงว่าเป็นคำขอคืนสินค้าที่ต้องรอตรวจสอบพัสดุที่ส่งคืนก่อน ต้องใช้ endpoint confirmReturnReceived แทน ไม่ใช่ endpoint นี้)
         if (refund.status_code === "RETURN_REQUESTED" || ORDER_RECEIVED_STATUS_CODES.includes(refund.status_code as OrderStatusCode)) {
             throw new ApiError(400, "Esta solicitud es de devolución de producto. Confirma la recepción del producto devuelto antes de procesar el reembolso.");
         }
@@ -3083,10 +3083,10 @@ export async function approveRefundRequest(or_id: number, st_id: number, note = 
     }
 }
 
-// admin ยกเลิกคำสั่งซื้อที่ยังรอชำระเงิน (PENDING) หรือชำระเงินแล้ว (CONFIRMED)
-// PENDING: ยังไม่มีการชำระเงินจริง แค่ยกเลิกและปล่อย stock ที่จองไว้กลับคืน
-// CONFIRMED: ชำระเงินแล้ว ต้องคืนเงินให้ลูกค้าผ่าน Conekta อัตโนมัติด้วย
-// ถ้าคืนอัตโนมัติไม่ได้ จะปิดออเดอร์เป็นยกเลิกไว้ก่อน แล้วให้ admin ยืนยันโอนคืนเองภายหลัง
+// El admin cancela un pedido que aún está pendiente de pago (PENDING) o que ya fue pagado (CONFIRMED) (admin ยกเลิกคำสั่งซื้อที่ยังรอชำระเงิน (PENDING) หรือชำระเงินแล้ว (CONFIRMED))
+// PENDING: todavía no hubo pago real; solo se cancela y se libera el stock que estaba reservado (PENDING: ยังไม่มีการชำระเงินจริง แค่ยกเลิกและปล่อย stock ที่จองไว้กลับคืน)
+// CONFIRMED: ya se pagó, así que también hay que reembolsar al cliente automáticamente a través de Conekta (CONFIRMED: ชำระเงินแล้ว ต้องคืนเงินให้ลูกค้าผ่าน Conekta อัตโนมัติด้วย)
+// Si el reembolso automático no es posible, el pedido se cierra como cancelado por ahora, y luego el admin debe confirmar la transferencia manual (ถ้าคืนอัตโนมัติไม่ได้ จะปิดออเดอร์เป็นยกเลิกไว้ก่อน แล้วให้ admin ยืนยันโอนคืนเองภายหลัง)
 export async function adminCancelOrder(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
@@ -3213,7 +3213,7 @@ export async function adminCancelOrder(or_id: number, st_id: number, note = "", 
             remark: trimmedNote ? `Admin cancel: ${trimmedNote}` : "Admin cancelled order",
         });
 
-        // order นี้ชำระเงินและกันสต๊อกไปแล้ว ต้องคืนสต๊อกกลับคลังเหมือน flow อนุมัติคืนเงิน
+        // Este order ya fue pagado y ya reservó stock, así que hay que devolver el stock al almacén igual que en el flow de aprobación de reembolso (order นี้ชำระเงินและกันสต๊อกไปแล้ว ต้องคืนสต๊อกกลับคลังเหมือน flow อนุมัติคืนเงิน)
         await restockConsumedReservationsForOrders(conn, [or_id]);
         await restoreCouponUsageForCancelledOrder(conn, order);
 
@@ -3245,7 +3245,7 @@ export async function adminCancelOrder(or_id: number, st_id: number, note = "", 
     }
 }
 
-// admin เปลี่ยนสถานะ order ตาม flow ร้าน เช่น PROCESSING/PACKED/READY_TO_SHIP
+// El admin cambia el estado del order según el flow de la tienda, como PROCESSING/PACKED/READY_TO_SHIP (admin เปลี่ยนสถานะ order ตาม flow ร้าน เช่น PROCESSING/PACKED/READY_TO_SHIP)
 export async function adminUpdateOrderStatus(
     or_id: number,
     st_id: number,
@@ -3332,12 +3332,12 @@ export async function adminUpdateOrderStatus(
     }
 }
 
-// สร้าง tracking URL จาก template ของ carrier และเลข tracking
+// Genera la tracking URL a partir del template del carrier y el número de tracking (สร้าง tracking URL จาก template ของ carrier และเลข tracking)
 function buildTrackingUrl(template: string | null | undefined, trackingNo: string): string | null {
     if (!template?.trim()) return null;
 
-    // Phase 2: ยังไม่ยิง API ขนส่งจริง แต่ใช้ template ของ carrier เพื่อสร้างลิงก์ tracking ให้อัตโนมัติ
-    // รองรับ placeholder หลัก {tracking_no}; ถ้า admin ใส่ URL ที่ไม่มี placeholder จะต่อเลขพัสดุท้าย URL ให้
+    // Phase 2: todavía no se llama a la API real de la paquetería, pero se usa el template del carrier para generar el link de tracking automáticamente (Phase 2: ยังไม่ยิง API ขนส่งจริง แต่ใช้ template ของ carrier เพื่อสร้างลิงก์ tracking ให้อัตโนมัติ)
+    // Soporta el placeholder principal {tracking_no}; si el admin ingresa una URL sin placeholder, se agrega el número de tracking al final de la URL (รองรับ placeholder หลัก {tracking_no}; ถ้า admin ใส่ URL ที่ไม่มี placeholder จะต่อเลขพัสดุท้าย URL ให้)
     const trimmed = template.trim();
     if (trimmed.includes("{tracking_no}")) {
         return trimmed.replaceAll("{tracking_no}", encodeURIComponent(trackingNo));
@@ -3347,7 +3347,7 @@ function buildTrackingUrl(template: string | null | undefined, trackingNo: strin
     return `${trimmed}${separator}${encodeURIComponent(trackingNo)}`;
 }
 
-// ตรวจเลขน้ำหนัก/ขนาดพัสดุว่ามีค่าเป็นบวกก่อนส่งไป shipping provider
+// Verifica que el peso/las dimensiones del paquete sean valores positivos antes de enviarlos al shipping provider (ตรวจเลขน้ำหนัก/ขนาดพัสดุว่ามีค่าเป็นบวกก่อนส่งไป shipping provider)
 function positiveShipmentNumber(value: unknown, label: string, productName: string): number {
     const numberValue = Number(value);
     if (!Number.isFinite(numberValue) || numberValue <= 0) {
@@ -3356,7 +3356,7 @@ function positiveShipmentNumber(value: unknown, label: string, productName: stri
     return Math.ceil(numberValue);
 }
 
-// สร้าง shipment จริงผ่าน provider แล้วบันทึก shipment/item/label/tracking กลับเข้า order
+// Crea el shipment real a través del provider y guarda shipment/item/label/tracking de vuelta en el order (สร้าง shipment จริงผ่าน provider แล้วบันทึก shipment/item/label/tracking กลับเข้า order)
 async function createShipmentForOrder(
     conn: PoolConnection,
     or_id: number,
@@ -3636,7 +3636,7 @@ async function createShipmentForOrder(
         if (result.shipmentStatus) statuses.push(result.shipmentStatus);
     }
 
-    // Order-level tracking ยังเก็บไว้เพื่อ compatibility กับหน้ารายการเดิม ส่วนข้อมูลจริงรายกล่องอยู่ที่ Order_shipments
+    // El tracking a nivel de Order se mantiene por compatibility con la página de listado anterior; los datos reales por caja están en Order_shipments (Order-level tracking ยังเก็บไว้เพื่อ compatibility กับหน้ารายการเดิม ส่วนข้อมูลจริงรายกล่องอยู่ที่ Order_shipments)
     await conn.query(
         `UPDATE Orders
          SET tracking_no = ?,
@@ -3656,7 +3656,7 @@ async function createShipmentForOrder(
     );
 }
 
-// admin กรอกหรือแก้ไขเลข tracking เองเมื่อไม่ได้สร้าง shipment ผ่าน provider
+// El admin ingresa o edita el número de tracking manualmente cuando el shipment no se creó a través de un provider (admin กรอกหรือแก้ไขเลข tracking เองเมื่อไม่ได้สร้าง shipment ผ่าน provider)
 export async function adminUpdateOrderTracking(
     or_id: number,
     st_id: number,
@@ -3705,8 +3705,8 @@ export async function adminUpdateOrderTracking(
             [trackingNo, trackingUrl, new Date(), or_id]
         );
 
-        // ถ้า order มี shipment เดียว ให้เลขพัสดุที่แก้ด้วยมือ sync ลงกล่องนั้นด้วย
-        // แต่ถ้ามีหลาย shipment จะไม่เดา เพราะแต่ละคลังควรมีเลขพัสดุแยกกัน
+        // Si el order tiene un solo shipment, el número de tracking editado manualmente también se sincroniza en esa caja (ถ้า order มี shipment เดียว ให้เลขพัสดุที่แก้ด้วยมือ sync ลงกล่องนั้นด้วย)
+        // Pero si hay varios shipments, no se intenta adivinar, porque cada almacén debería tener su propio número de tracking (แต่ถ้ามีหลาย shipment จะไม่เดา เพราะแต่ละคลังควรมีเลขพัสดุแยกกัน)
         const [shipmentCountRows] = await conn.query<(RowDataPacket & { cnt: number })[]>(
             "SELECT COUNT(*) AS cnt FROM Order_shipments WHERE or_id = ?",
             [or_id]
@@ -3747,9 +3747,9 @@ export async function adminUpdateOrderTracking(
     }
 }
 
-// admin สร้าง shipment และเปลี่ยน order เป็น READY_TO_SHIP
-// flow ปัจจุบันของ backoffice ยังไม่มีขั้น PACKED จึงรับ PROCESSING เป็นหลัก
-// และคง PACKED ไว้เพื่อรองรับ order เก่าที่อาจอยู่ในสถานะนี้
+// El admin crea el shipment y cambia el order a READY_TO_SHIP (admin สร้าง shipment และเปลี่ยน order เป็น READY_TO_SHIP)
+// El flow actual del backoffice todavía no tiene el paso PACKED, por lo que se acepta PROCESSING como principal (flow ปัจจุบันของ backoffice ยังไม่มีขั้น PACKED จึงรับ PROCESSING เป็นหลัก)
+// y se mantiene PACKED para soportar los orders antiguos que puedan estar en ese estado (และคง PACKED ไว้เพื่อรองรับ order เก่าที่อาจอยู่ในสถานะนี้)
 export async function adminCreateOrderShipment(
     or_id: number,
     st_id: number,
@@ -3829,7 +3829,7 @@ export async function adminCreateOrderShipment(
     }
 }
 
-// action สำหรับ dev: จำลองว่า order จัดส่งสำเร็จและสร้าง event delivered
+// Action para dev: simula que el order se envió con éxito y genera el event delivered (action สำหรับ dev: จำลองว่า order จัดส่งสำเร็จและสร้าง event delivered)
 export async function adminDevMarkOrderDelivered(
     or_id: number,
     st_id: number,
@@ -3981,7 +3981,7 @@ export async function adminDevMarkOrderDelivered(
     }
 }
 
-// admin ปฏิเสธคำขอคืนเงิน/คืนสินค้า พร้อมบันทึกเหตุผลและแจ้ง buyer
+// El admin rechaza la solicitud de reembolso/devolución, registrando el motivo y notificando al buyer (admin ปฏิเสธคำขอคืนเงิน/คืนสินค้า พร้อมบันทึกเหตุผลและแจ้ง buyer)
 export async function rejectRefundRequest(or_id: number, st_id: number, note: string, lg_code = "es"): Promise<AdminOrderDetailDTO> {
     if (note.trim().length < 3) throw new ApiError(400, "Indica el motivo del rechazo de la solicitud de reembolso.");
 
@@ -4014,8 +4014,8 @@ export async function rejectRefundRequest(or_id: number, st_id: number, note: st
             [note.trim(), new Date(), refund.refund_id]
         );
 
-        // ถ้าคำขอนี้เป็นการคืนสินค้าหลังจัดส่งแล้ว (ทำให้ order เข้าสถานะ RETURN_REQUESTED) พอปฏิเสธคำขอต้องย้อนกลับเป็น DELIVERED
-        // ไม่งั้น order จะค้างอยู่ที่ RETURN_REQUESTED ตลอดไป ทำให้ buyer กดยืนยันรับสินค้าไม่ได้เลยทั้งที่ไม่มีอะไรจะคืนแล้ว
+        // Si esta solicitud es una devolución después del envío (lo que hizo que el order entrara en estado RETURN_REQUESTED), al rechazar la solicitud hay que regresarlo a DELIVERED (ถ้าคำขอนี้เป็นการคืนสินค้าหลังจัดส่งแล้ว (ทำให้ order เข้าสถานะ RETURN_REQUESTED) พอปฏิเสธคำขอต้องย้อนกลับเป็น DELIVERED)
+        // De lo contrario, el order se quedaría atascado en RETURN_REQUESTED para siempre, y el buyer no podría confirmar la recepción aunque ya no haya nada que devolver (ไม่งั้น order จะค้างอยู่ที่ RETURN_REQUESTED ตลอดไป ทำให้ buyer กดยืนยันรับสินค้าไม่ได้เลยทั้งที่ไม่มีอะไรจะคืนแล้ว)
         if (refund.status_code === "RETURN_REQUESTED") {
             await setOrdersStatus(conn, [or_id], "DELIVERED", {
                 remark: `Solicitud de devolución rechazada: ${note.trim()}`,
@@ -4046,7 +4046,7 @@ export async function rejectRefundRequest(or_id: number, st_id: number, note: st
     }
 }
 
-// admin ยืนยันรับสินค้าคืน แล้วดำเนินการคืนเงินหรือบันทึกว่าให้โอนคืนเอง
+// El admin confirma la recepción del producto devuelto, y procede con el reembolso o registra que debe transferirse manualmente (admin ยืนยันรับสินค้าคืน แล้วดำเนินการคืนเงินหรือบันทึกว่าให้โอนคืนเอง)
 export async function confirmReturnReceived(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
@@ -4088,7 +4088,7 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
 
         const refund = rows[0];
         if (!refund) throw new ApiError(404, "No se encontró una solicitud de devolución pendiente.");
-        // buyer อาจยืนยันรับสินค้า (RECEIVED) ไปแล้วระหว่างที่คำขอคืนบางรายการนี้ยังค้างอยู่ก็ได้ (แยกกันคนละเรื่อง) จึงรับสถานะนี้ด้วย ไม่ใช่แค่ RETURN_REQUESTED
+        // El buyer pudo haber confirmado la recepción (RECEIVED) mientras esta solicitud de devolución parcial seguía pendiente (son asuntos separados), por eso también se acepta este estado, no solo RETURN_REQUESTED (buyer อาจยืนยันรับสินค้า (RECEIVED) ไปแล้วระหว่างที่คำขอคืนบางรายการนี้ยังค้างอยู่ก็ได้ (แยกกันคนละเรื่อง) จึงรับสถานะนี้ด้วย ไม่ใช่แค่ RETURN_REQUESTED)
         if (refund.status_code !== "RETURN_REQUESTED" && !ORDER_RECEIVED_STATUS_CODES.includes(refund.status_code as OrderStatusCode)) {
             throw new ApiError(400, "Este pedido no está en estado de espera de recepción de la devolución.");
         }
@@ -4145,9 +4145,9 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
             [remark, new Date(), refund.refund_id]
         );
 
-        // ถ้ายังมีรายการในออเดอร์ที่ยังไม่ถูกคืนสำเร็จ (คืนบางรายการ) ให้กลับไปสถานะ DELIVERED แทนสถานะปิดจบ
-        // เพื่อให้ buyer ยังยืนยันรับสินค้า/ยื่นคำขอคืนรายการที่เหลือได้ต่อ
-        // แต่ถ้า buyer ยืนยันรับสินค้า (RECEIVED-tier) ไปแล้วก่อนหน้านี้ระหว่างที่คำขอนี้ยัง pending อยู่ ก็ไม่ต้องย้อนสถานะกลับ ปล่อยไว้อย่างเดิม
+        // Si todavía hay items en el pedido que no se han devuelto con éxito (devolución parcial), se regresa al estado DELIVERED en lugar de un estado terminal (ถ้ายังมีรายการในออเดอร์ที่ยังไม่ถูกคืนสำเร็จ (คืนบางรายการ) ให้กลับไปสถานะ DELIVERED แทนสถานะปิดจบ)
+        // Para que el buyer siga pudiendo confirmar la recepción o enviar solicitudes de devolución por los items restantes (เพื่อให้ buyer ยังยืนยันรับสินค้า/ยื่นคำขอคืนรายการที่เหลือได้ต่อ)
+        // Pero si el buyer ya confirmó la recepción (RECEIVED-tier) antes, mientras esta solicitud seguía pending, no es necesario revertir el estado; se deja como está (แต่ถ้า buyer ยืนยันรับสินค้า (RECEIVED-tier) ไปแล้วก่อนหน้านี้ระหว่างที่คำขอนี้ยัง pending อยู่ ก็ไม่ต้องย้อนสถานะกลับ ปล่อยไว้อย่างเดิม)
         const allReturned = await allOrderItemsReturned(conn, or_id);
         if (allReturned) {
             await setOrdersStatus(conn, [or_id], "RETURN_REQUESTED_COMPLETED", { remark });
@@ -4187,7 +4187,7 @@ export async function confirmReturnReceived(or_id: number, st_id: number, note =
     }
 }
 
-// admin ยืนยันว่าโอนเงินคืนแบบ manual เรียบร้อยแล้ว
+// El admin confirma que la transferencia de reembolso manual ya se completó (admin ยืนยันว่าโอนเงินคืนแบบ manual เรียบร้อยแล้ว)
 export async function confirmManualRefundRequest(or_id: number, st_id: number, note = "", lg_code = "es"): Promise<AdminOrderDetailDTO> {
     await ensureInventoryReservationTable();
     await ensureRefundMethodColumn();
@@ -4225,8 +4225,8 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
             throw new ApiError(400, "Esta solicitud de reembolso no corresponde a una transferencia manual.");
         }
 
-        // ร้านที่ไม่ใช่ platform เองไม่ได้ถือเงินลูกค้าจริง (platform เป็น merchant of record ผ่าน Conekta)
-        // จึงต้องให้ผู้ดูแลระบบ platform เท่านั้นที่ยืนยันว่าโอนเงินคืนเองแล้วสำหรับ order ของร้านอื่น
+        // Una tienda que no es la platform no retiene realmente el dinero del cliente (la platform es el merchant of record a través de Conekta) (ร้านที่ไม่ใช่ platform เองไม่ได้ถือเงินลูกค้าจริง (platform เป็น merchant of record ผ่าน Conekta))
+        // Por eso solo el administrador de la platform puede confirmar que ya se transfirió el reembolso manualmente para orders de otras tiendas (จึงต้องให้ผู้ดูแลระบบ platform เท่านั้นที่ยืนยันว่าโอนเงินคืนเองแล้วสำหรับ order ของร้านอื่น)
         if (!(await isPlatformStore(refund.order_st_id)) && !(await isPlatformStore(st_id))) {
             throw new ApiError(403, "Solo un administrador de la plataforma puede confirmar la transferencia de reembolso para esta tienda.");
         }
@@ -4241,7 +4241,7 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
             [remark, new Date(), refund.refund_id]
         );
 
-        // buyer อาจยืนยันรับสินค้า (RECEIVED-tier) ไปแล้วก่อนหน้านี้ระหว่างที่คำขอคืนรายการนี้ยัง pending อยู่ก็ได้ ถือว่ายังเป็น return flow เหมือนกัน
+        // El buyer pudo haber confirmado la recepción (RECEIVED-tier) antes, mientras esta solicitud de devolución seguía pending; de todas formas se sigue considerando parte del return flow (buyer อาจยืนยันรับสินค้า (RECEIVED-tier) ไปแล้วก่อนหน้านี้ระหว่างที่คำขอคืนรายการนี้ยัง pending อยู่ก็ได้ ถือว่ายังเป็น return flow เหมือนกัน)
         const isReturnFlow = refund.status_code === "RETURN_REQUESTED" || ORDER_RECEIVED_STATUS_CODES.includes(refund.status_code as OrderStatusCode);
 
         let manualRefundFinalStatus: OrderStatusCode | null;
@@ -4250,10 +4250,10 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
             if (allReturned) {
                 manualRefundFinalStatus = "RETURN_REQUESTED_COMPLETED";
             } else if (refund.status_code === "RETURN_REQUESTED") {
-                // เหมือน confirmReturnReceived: ถ้าเป็นการคืนบางรายการและยังคืนไม่ครบทุกชิ้น ให้กลับไป DELIVERED แทนสถานะปิดจบ
+                // Igual que confirmReturnReceived: si es una devolución parcial y aún no se han devuelto todas las piezas, se regresa a DELIVERED en lugar de un estado terminal (เหมือน confirmReturnReceived: ถ้าเป็นการคืนบางรายการและยังคืนไม่ครบทุกชิ้น ให้กลับไป DELIVERED แทนสถานะปิดจบ)
                 manualRefundFinalStatus = "DELIVERED";
             } else {
-                // buyer ยืนยันรับสินค้าไปแล้วก่อนหน้า (RECEIVED-tier) และคืนไม่ครบ ไม่ต้องย้อน/เปลี่ยนสถานะออเดอร์ต่อ
+                // El buyer ya confirmó la recepción antes (RECEIVED-tier) y la devolución está incompleta; no es necesario revertir/cambiar más el estado del pedido (buyer ยืนยันรับสินค้าไปแล้วก่อนหน้า (RECEIVED-tier) และคืนไม่ครบ ไม่ต้องย้อน/เปลี่ยนสถานะออเดอร์ต่อ)
                 manualRefundFinalStatus = null;
             }
         } else {
@@ -4298,7 +4298,7 @@ export async function confirmManualRefundRequest(or_id: number, st_id: number, n
     }
 }
 
-// job batch: ยกเลิก order pending ที่หมดเวลาชำระ พร้อมคืน stock และคูปอง
+// Job batch: cancela los orders pending cuyo tiempo de pago expiró, devolviendo el stock y el cupón (job batch: ยกเลิก order pending ที่หมดเวลาชำระ พร้อมคืน stock และคูปอง)
 export async function expirePendingPaymentOrders(limit = 50): Promise<number> {
     await ensureInventoryReservationTable();
     await ensureOrderShipmentLabelColumn();
@@ -4344,7 +4344,7 @@ export async function expirePendingPaymentOrders(limit = 50): Promise<number> {
             return 0;
         }
 
-        // หมดเวลาชำระเงินแล้ว: ปิด order pending และคืน stock ที่เคย reserve ไว้
+        // El tiempo de pago ya expiró: se cierra el order pending y se devuelve el stock que había sido reservado (หมดเวลาชำระเงินแล้ว: ปิด order pending และคืน stock ที่เคย reserve ไว้)
         await setOrdersStatus(conn, orderIds, "CANCELLED", { remark: "Payment expired" });
 
         await releaseReservationsForOrders(conn, orderIds);
@@ -4378,7 +4378,7 @@ export async function expirePendingPaymentOrders(limit = 50): Promise<number> {
     }
 }
 
-// job batch: เปลี่ยน DELIVERED เป็น AUTO_RECEIVED เมื่อครบกำหนดตรวจสอบและไม่มี refund pending
+// Job batch: cambia DELIVERED a AUTO_RECEIVED cuando se cumple el plazo de verificación y no hay refund pending (job batch: เปลี่ยน DELIVERED เป็น AUTO_RECEIVED เมื่อครบกำหนดตรวจสอบและไม่มี refund pending)
 export async function autoReceiveDeliveredOrders(days = 14, limit = 100): Promise<number> {
     await ensureOrderShipmentTables();
 
@@ -4452,7 +4452,7 @@ export async function autoReceiveDeliveredOrders(days = 14, limit = 100): Promis
     }
 }
 
-// เริ่ม background job สำหรับยืนยันรับสินค้าอัตโนมัติเป็นรอบ ๆ
+// Inicia el background job para confirmar la recepción automática de forma periódica (เริ่ม background job สำหรับยืนยันรับสินค้าอัตโนมัติเป็นรอบ ๆ)
 export function startAutoReceiveDeliveredOrdersJob(intervalMs = 60 * 60 * 1000, days = 14): void {
     if (autoReceiveJobStarted) return;
     autoReceiveJobStarted = true;
@@ -4473,20 +4473,20 @@ export function startAutoReceiveDeliveredOrdersJob(intervalMs = 60 * 60 * 1000, 
 }
 
 /**
- * Job ตรวจสอบ order ที่รอชำระเงินแต่หมดเวลาแล้ว
+ * Job que verifica los orders que están esperando pago pero ya expiraron (Job ตรวจสอบ order ที่รอชำระเงินแต่หมดเวลาแล้ว)
  *
- * การทำงาน:
- *   - รันทันทีตอน server start เพื่อจัดการ order ค้างจากก่อนหน้า
- *   - วนซ้ำทุก intervalMs (default 60 วินาที) ตลอดอายุ process
- *   - แต่ละรอบเรียก expirePendingPaymentOrders() ซึ่ง:
- *       1. หา order ที่ status = รอชำระ และ payment_expires_at < NOW()
- *       2. เปลี่ยน status → CANCELLED
- *       3. คืน reserved stock inventory กลับ
- *       4. ส่ง notification แจ้งร้านค้าและผู้ซื้อ
+ * Funcionamiento: (การทำงาน:)
+ * - Se ejecuta de inmediato al iniciar el server, para procesar los orders pendientes de antes (- รันทันทีตอน server start เพื่อจัดการ order ค้างจากก่อนหน้า)
+ * - Se repite cada intervalMs (default 60 segundos) durante toda la vida del process (- วนซ้ำทุก intervalMs (default 60 วินาที) ตลอดอายุ process)
+ * - Cada ronda llama a expirePendingPaymentOrders(), la cual: (- แต่ละรอบเรียก expirePendingPaymentOrders() ซึ่ง:)
+ * 1. Busca los orders con status = pendiente de pago y payment_expires_at < NOW() (1. หา order ที่ status = รอชำระ และ payment_expires_at < NOW())
+ * 2. Cambia status → CANCELLED (2. เปลี่ยน status → CANCELLED)
+ * 3. Devuelve el reserved stock inventory (3. คืน reserved stock inventory กลับ)
+ * 4. Envía notification a la tienda y al comprador (4. ส่ง notification แจ้งร้านค้าและผู้ซื้อ)
  */
-// เริ่ม background job สำหรับยกเลิก order ที่หมดเวลาชำระเงิน
+// Inicia el background job para cancelar los orders cuyo tiempo de pago expiró (เริ่ม background job สำหรับยกเลิก order ที่หมดเวลาชำระเงิน)
 export function startPaymentExpirationJob(intervalMs = 60_000): void {
-    // ป้องกัน job ซ้ำหาก startPaymentExpirationJob() ถูกเรียกหลายครั้ง
+    // Evita jobs duplicados en caso de que startPaymentExpirationJob() se llame varias veces (ป้องกัน job ซ้ำหาก startPaymentExpirationJob() ถูกเรียกหลายครั้ง)
     if (expirationJobStarted) return;
     expirationJobStarted = true;
 
@@ -4501,7 +4501,7 @@ export function startPaymentExpirationJob(intervalMs = 60_000): void {
         }
     };
 
-    // รันทันทีตอน API เริ่ม และวนซ้ำเพื่อคืน reserved_qty ของ order ที่เลยเวลาจ่าย
+    // Se ejecuta de inmediato al iniciar la API, y se repite para devolver el reserved_qty de los orders que ya pasaron su tiempo de pago (รันทันทีตอน API เริ่ม และวนซ้ำเพื่อคืน reserved_qty ของ order ที่เลยเวลาจ่าย)
     void run();
     setInterval(() => { void run(); }, intervalMs);
 }

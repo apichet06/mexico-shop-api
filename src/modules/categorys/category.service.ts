@@ -8,7 +8,7 @@ import { ApiError, isDupError, isFkConstraintError } from "../../shared/errors/A
 import { translateNameGimini } from "../../shared/translate/translate_gimini.js";
 import { translateProductText } from "../../shared/translate/translate.js";
 
-// ระบบเหลือหน้าร้านหลักเพียงร้านเดียว จึงผูกหมวดหมู่ใหม่เข้ากับ Catalog หลักอัตโนมัติ
+// El sistema mantiene una única tienda principal, por lo que las categorías nuevas se vinculan automáticamente al Catalog principal (ระบบเหลือหน้าร้านหลักเพียงร้านเดียว จึงผูกหมวดหมู่ใหม่เข้ากับ Catalog หลักอัตโนมัติ)
 const PRIMARY_CATALOG_ID = 1;
 
 
@@ -29,7 +29,7 @@ export async function listCategorys(): Promise<CategoryDTO[]> {
 }
 
 export async function getCategoryByLgCode(lg_code: string, ctl_id = PRIMARY_CATALOG_ID): Promise<CategoryDTO[]> {
-    // กันค่าที่ไม่ถูกต้องและไม่ปล่อยให้หน้าเดียวเห็นหมวดหมู่จาก catalog เก่าโดยไม่ตั้งใจ
+    // Evita valores inválidos y que una misma página muestre sin querer categorías de un catalog antiguo (กันค่าที่ไม่ถูกต้องและไม่ปล่อยให้หน้าเดียวเห็นหมวดหมู่จาก catalog เก่าโดยไม่ตั้งใจ)
     const resolvedCatalogId = Number.isFinite(ctl_id) && ctl_id > 0 ? ctl_id : PRIMARY_CATALOG_ID;
     const whereConditions = ["b.lg_code = ?", "a.ctl_id = ?"];
     const queryParams: Array<string | number> = [lg_code, resolvedCatalogId];
@@ -56,7 +56,7 @@ export async function createCategory(input: CreateCategoryInput): Promise<number
     try {
         await conn.beginTransaction();
 
-        // 1) แปลภาษาให้ครบ 3 ภาษา
+        // 1) Traduce a los 3 idiomas completos (แปลภาษาให้ครบ 3 ภาษา)
         const t = await translateProductText(input.cl_name);
         const [rows] = await conn.query<any[]>(
             "SELECT COALESCE(MAX(c_sort_order), 0) as maxSort FROM Categorys FOR UPDATE"
@@ -77,8 +77,8 @@ export async function createCategory(input: CreateCategoryInput): Promise<number
 
         const c_id = masterRes.insertId;
 
-        // 3) Insert translations (CategoryLangs) 3 แถว
-        // แนะนำทำ UNIQUE (c_id, lg_code) ใน DB กันซ้ำ
+        // 3) Insert translations (CategoryLangs), 3 filas (3 แถว)
+        // Se recomienda crear un UNIQUE (c_id, lg_code) en la BD para evitar duplicados (แนะนำทำ UNIQUE (c_id, lg_code) ใน DB กันซ้ำ)
         const langRows = [
             [c_id, "es", t.es],
             [c_id, "en", t.en],
@@ -119,7 +119,7 @@ export async function deleteCategory(c_id: number): Promise<void> {
     try {
         await conn.beginTransaction();
 
-        // ตรวจสอบก่อนว่า category ถูกใช้งานใน Product อยู่หรือไม่
+        // Verifica primero si la category está en uso en Product (ตรวจสอบก่อนว่า category ถูกใช้งานใน Product อยู่หรือไม่)
         const [usedRows] = await conn.query<RowDataPacket[]>(
             "SELECT COUNT(*) as count FROM Products WHERE c_id = ?", [c_id]
         );

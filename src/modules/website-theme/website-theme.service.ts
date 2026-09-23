@@ -162,7 +162,7 @@ async function ensureThemeColumns(): Promise<void> {
 async function ensureHeroTables(): Promise<void> {
     if (!heroTablesReady) {
         heroTablesReady = (async () => {
-            // สร้างตาราง hero แยกจาก website_theme เพื่อไม่ให้พื้นหลังเว็บเดิมปนกับข้อมูลสไลด์
+            // Crea las tablas de hero separadas de website_theme para que el fondo del sitio existente no se mezcle con los datos de las diapositivas (สร้างตาราง hero แยกจาก website_theme เพื่อไม่ให้พื้นหลังเว็บเดิมปนกับข้อมูลสไลด์)
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS website_hero_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -235,10 +235,10 @@ export async function upsertTheme(websiteKey: WebsiteKey, input: UpsertThemeInpu
     await ensureThemeColumns()
 
     if (input.bg_type === "color" && (!input.bg_colors || input.bg_colors.length === 0)) {
-        throw new ApiError(400, "ต้องระบุค่าสีอย่างน้อย 1 สี")
+        throw new ApiError(400, "Debes especificar al menos 1 color.") // "ต้องระบุค่าสีอย่างน้อย 1 สี"
     }
     if (input.bg_type === "image" && !input.bg_image_url) {
-        throw new ApiError(400, "ต้องระบุ URL รูปภาพ")
+        throw new ApiError(400, "Debes especificar la URL de la imagen.") // "ต้องระบุ URL รูปภาพ"
     }
 
     const current = await getTheme(websiteKey)
@@ -303,10 +303,10 @@ export async function upsertHeroBackground(
     await ensureHeroTables()
 
     if (input.hero_bg_type === "color" && (!input.hero_bg_colors || input.hero_bg_colors.length === 0)) {
-        throw new ApiError(400, "ต้องระบุค่าสีพื้นหลัง Header Hero อย่างน้อย 1 สี")
+        throw new ApiError(400, "Debes especificar al menos 1 color de fondo para el Header Hero.") // "ต้องระบุค่าสีพื้นหลัง Header Hero อย่างน้อย 1 สี"
     }
     if (input.hero_bg_type === "image" && !input.hero_bg_image_url) {
-        throw new ApiError(400, "ต้องระบุ URL รูปภาพพื้นหลัง Header Hero")
+        throw new ApiError(400, "Debes especificar la URL de la imagen de fondo del Header Hero.") // "ต้องระบุ URL รูปภาพพื้นหลัง Header Hero"
     }
 
     const current = await getHeroBackground(websiteKey)
@@ -355,10 +355,10 @@ export async function upsertHeroSlides(
     await ensureHeroTables()
 
     if (slides.length > 5) {
-        throw new ApiError(400, "Header Hero slide เพิ่มได้สูงสุด 5 รูป")
+        throw new ApiError(400, "El Header Hero admite un máximo de 5 slides.") // "Header Hero slide เพิ่มได้สูงสุด 5 รูป"
     }
     if (slides.some((slide) => !slide.image_url)) {
-        throw new ApiError(400, "ทุก slide ต้องมีรูปภาพ")
+        throw new ApiError(400, "Todos los slides deben tener una imagen.") // "ทุก slide ต้องมีรูปภาพ"
     }
 
     const currentSlides = await getHeroSlides(websiteKey)
@@ -366,7 +366,7 @@ export async function upsertHeroSlides(
     try {
         await conn.beginTransaction()
 
-        // บันทึกแบบ replace ทั้งชุด เพราะ backoffice เป็นตัวกำหนดลำดับล่าสุดของรายการทั้งหมด
+        // Guarda reemplazando todo el conjunto, ya que el backoffice determina el orden más reciente de toda la lista (บันทึกแบบ replace ทั้งชุด เพราะ backoffice เป็นตัวกำหนดลำดับล่าสุดของรายการทั้งหมด)
         await conn.query("DELETE FROM website_hero_slides WHERE website_key = ?", [websiteKey])
 
         for (const [index, slide] of slides.entries()) {

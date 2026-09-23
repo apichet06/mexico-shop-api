@@ -168,7 +168,7 @@ export async function getlistSroreShopById(st_id: number) {
 export async function getStoreById(
   st_id: number,
 ): Promise<StoreDetailDTO | null> {
-  // 1. ตรวจว่ามีร้านนี้จริงก่อน — ถ้าไม่มี return null เลย ไม่ต้อง query ต่อ
+  // 1. Verifica primero que la tienda exista realmente — si no existe, retorna null de inmediato sin hacer más consultas (ตรวจว่ามีร้านนี้จริงก่อน — ถ้าไม่มี return null เลย ไม่ต้อง query ต่อ)
 
   await ensureStoreEmailVerificationTable();
 
@@ -306,7 +306,7 @@ export async function generateMaxStoreId(): Promise<string> {
 
     let idNumber: number;
     if (!currentMaxId) {
-      idNumber = 10001; // ยังไม่มี store เริ่มที่ 10001
+      idNumber = 10001; // Todavía no hay tiendas, se empieza en 10001 (ยังไม่มี store เริ่มที่ 10001)
     } else {
       idNumber = parseInt(currentMaxId.slice(8)) + 1;
     }
@@ -636,7 +636,7 @@ export async function createStoreRegister(
       );
     }
 
-    const st_id = input.st_id; // ได้มาจาก token
+    const st_id = input.st_id; // Obtenido del token (ได้มาจาก token)
     const createdByPlatformStore = await isPlatformStore(st_id);
     const initialStatus = requiresSellerConfirmation
       ? "PENDING_SELLER_CONFIRMATION"
@@ -644,7 +644,7 @@ export async function createStoreRegister(
         ? "ACTIVE"
         : "PENDING";
 
-    // ===== 1. Insert ตาราง stores (ตารางหลัก) =====
+    // ===== 1. Insertar en la tabla stores (tabla principal) ===== (Insert ตาราง stores (ตารางหลัก))
     const maxId = await generateMaxStoreId();
     const storeData = {
       st_number: maxId,
@@ -664,7 +664,7 @@ export async function createStoreRegister(
     );
     const stId = storeRes.insertId;
 
-    // ===== 2. Insert ตาราง store_locations =====
+    // ===== 2. Insertar en la tabla store_locations ===== (Insert ตาราง store_locations)
     if (input.locations.length > 0) {
       const defaultLocationIndex = input.locations.findIndex((loc) =>
         Boolean(loc.is_default),
@@ -696,7 +696,7 @@ export async function createStoreRegister(
 
     const e_isActive = requiresSellerConfirmation ? false : true; // admin-assisted stores must be confirmed by seller first
 
-    // ===== 3. Insert ตาราง store_employees =====
+    // ===== 3. Insertar en la tabla store_employees ===== (Insert ตาราง store_employees)
     if (input.employees.length > 0) {
       const employeeValues = input.employees.map((emp) => [
         stId,
@@ -771,7 +771,7 @@ export async function createStoreRegister(
     console.error(`Error creating store register: ${err}`);
     throw err;
   } finally {
-    // ===== คืน connection กลับ pool =====
+    // ===== Devolver la conexión al pool ===== (คืน connection กลับ pool)
     conn.release();
   }
 }

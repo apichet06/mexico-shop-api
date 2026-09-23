@@ -8,24 +8,24 @@ export function deepClone<T>(value: T): T {
 }
 
 /**
- * ตรวจว่าเป็น text node ที่ต้องแปล
+ * Verifica si es un text node que debe traducirse (ตรวจว่าเป็น text node ที่ต้องแปล)
  */
 export function isTranslatableTextNode(node: LexicalNode): boolean {
     return node.type === "text" && typeof node.text === "string";
 }
 
 /**
- * ตรวจว่าเป็น node ที่ควรข้าม logic translation โดยตรง
- * (จริงๆ ไม่จำเป็นต้องมี function นี้ก็ได้ แต่มีไว้ให้ภาพชัด)
+ * Verifica si es un node que debe omitirse directamente en la lógica de traducción (ตรวจว่าเป็น node ที่ควรข้าม logic translation โดยตรง)
+ * (en realidad no es necesario tener esta función, pero se deja para mayor claridad) (จริงๆ ไม่จำเป็นต้องมี function นี้ก็ได้ แต่มีไว้ให้ภาพชัด)
  */
 export function isIgnoredNode(node: LexicalNode): boolean {
     return node.type === "image";
 }
 
 /**
- * เก็บข้อความทั้งหมดจาก text nodes ตามลำดับ
+ * Recopila todos los textos de los text nodes en orden (เก็บข้อความทั้งหมดจาก text nodes ตามลำดับ)
  * - ignore image node
- * - ignore src/altText/layout fields อัตโนมัติ เพราะเราไม่อ่าน field พวกนั้น
+ * - ignora los campos src/altText/layout automáticamente, porque no leemos esos campos (ignore src/altText/layout fields อัตโนมัติ เพราะเราไม่อ่าน field พวกนั้น)
  */
 export function collectTranslatableTexts(
     node: LexicalNode,
@@ -49,7 +49,7 @@ export function collectTranslatableTexts(
 }
 
 /**
- * เอาข้อความที่แปลแล้ว replace กลับเข้า text node ตามลำดับเดิม
+ * Toma el texto ya traducido y lo reemplaza de vuelta en el text node en el orden original (เอาข้อความที่แปลแล้ว replace กลับเข้า text node ตามลำดับเดิม)
  */
 export function replaceTranslatedTexts(
     node: LexicalNode,
@@ -79,14 +79,14 @@ export function replaceTranslatedTexts(
 }
 
 /**
- * helper สำหรับ extract จาก editorState
+ * helper para extraer desde editorState (helper สำหรับ extract จาก editorState)
  */
 export function extractTextsFromEditorState(editorState: LexicalEditorState): string[] {
     return collectTranslatableTexts(editorState.root);
 }
 
 /**
- * helper สำหรับ rebuild editorState
+ * helper para reconstruir editorState (helper สำหรับ rebuild editorState)
  */
 export function buildTranslatedEditorState(
     original: LexicalEditorState,

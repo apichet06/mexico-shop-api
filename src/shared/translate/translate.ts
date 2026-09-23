@@ -7,7 +7,7 @@ export async function translateProductText(es: string): Promise<MultiLangText> {
     const text = (es ?? "").trim();
     if (!text) return { es: "", en: "", ja: "", th: "" };
 
-    // context ช่วยให้คำสั้นๆ แปลแม่นขึ้น (เช่น "สุขภาพ" จะไม่หลุดความหมาย) :contentReference[oaicite:2]{index=2}
+    // El context ayuda a que las palabras cortas se traduzcan con más precisión (por ejemplo, "salud" no perderá su significado) :contentReference[oaicite:2]{index=2} (context ช่วยให้คำสั้นๆ แปลแม่นขึ้น (เช่น "สุขภาพ" จะไม่หลุดความหมาย))
     const options: deepl.TranslateTextOptions = {
         context: `
                 Category name for a professional e-commerce platform.

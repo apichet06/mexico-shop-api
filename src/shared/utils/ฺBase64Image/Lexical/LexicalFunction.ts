@@ -39,7 +39,7 @@ export function parseLexicalJson(input: string | object | null | undefined): Lex
     }
 }
 
-// 2) หา text node ทั้งหมด อันนี้จะเก็บ reference ของ node ที่เป็น type === "text" เท่านั้น ดังนั้น image node จะไม่ถูกแตะเลย
+// 2) Busca todos los text nodes; esto guarda solo la referencia de los nodes de tipo === "text", así que los image nodes no se tocan (หา text node ทั้งหมด อันนี้จะเก็บ reference ของ node ที่เป็น type === "text" เท่านั้น ดังนั้น image node จะไม่ถูกแตะเลย)
 export function collectTextNodes(node: unknown, result: LexicalNode[] = []): LexicalNode[] {
     if (!isObject(node)) return result;
 
@@ -58,8 +58,8 @@ export function collectTextNodes(node: unknown, result: LexicalNode[] = []): Lex
     return result;
 }
 
-//3) รวมข้อความออกมาเป็น plain text สำหรับส่งแปล เราจะส่ง text node ทีละตัวก็ได้ แต่ถ้าเยอะมากจะยิง API หลายครั้ง 
-// วิธีที่ practical กว่าคือรวมเป็นก้อนเดียวด้วย delimiter ที่ไม่น่าไปชนข้อความจริง แล้วค่อย split กลับ
+//3) Junta el texto en plain text para enviarlo a traducir; se podría enviar cada text node por separado, pero si hay muchos se llamaría a la API demasiadas veces (รวมข้อความออกมาเป็น plain text สำหรับส่งแปล เราจะส่ง text node ทีละตัวก็ได้ แต่ถ้าเยอะมากจะยิง API หลายครั้ง)
+// La forma más práctica es unir todo en un solo bloque con un delimitador que no debería chocar con el texto real, y luego separarlo de nuevo (วิธีที่ practical กว่าคือรวมเป็นก้อนเดียวด้วย delimiter ที่ไม่น่าไปชนข้อความจริง แล้วค่อย split กลับ)
 const TEXT_SEPARATOR = "\n[[[LEXICAL_TEXT_SEPARATOR]]]\n";
 export function joinTextNodesForTranslation(nodes: LexicalNode[]): string {
     return nodes
@@ -67,7 +67,7 @@ export function joinTextNodesForTranslation(nodes: LexicalNode[]): string {
         .join(TEXT_SEPARATOR);
 }
 
-// 4) ใส่ข้อความกลับเข้า text node
+// 4) Coloca el texto de vuelta en el text node (ใส่ข้อความกลับเข้า text node)
 export function replaceTextNodes(nodes: LexicalNode[], translatedParts: string[]) {
     if (nodes.length !== translatedParts.length) {
         throw new Error(
@@ -133,7 +133,7 @@ export async function translateLexicalContent(
     const joinedSpanishText = joinTextNodesForTranslation(esTextNodes);
     const translated = await translateProductText(joinedSpanishText);
 
-    // ใช้ตรงนี้
+    // Se usa aquí (ใช้ตรงนี้)
     const enParts = splitTranslatedTextSafely(translated.en, enTextNodes.length);
     const jaParts = splitTranslatedTextSafely(translated.ja, jaTextNodes.length);
     const thParts = splitTranslatedTextSafely(translated.th, thTextNodes.length);
@@ -150,8 +150,8 @@ export async function translateLexicalContent(
     };
 }
 
-//ปกติถ้า editor นี้เก็บ content ไทยอยู่แล้ว การดึง text node ก็พอ
-// แต่ถ้าคุณอยากกรองให้เอาเฉพาะข้อความที่มีตัวอักษรไทยจริง ๆ ก็เพิ่ม filter ได้
+// Normalmente, si este editor ya guarda el content en tailandés, basta con extraer los text nodes (ปกติถ้า editor นี้เก็บ content ไทยอยู่แล้ว การดึง text node ก็พอ)
+// Pero si quieres filtrar para tomar solo el texto que realmente tiene caracteres tailandeses, puedes agregar un filtro (แต่ถ้าคุณอยากกรองให้เอาเฉพาะข้อความที่มีตัวอักษรไทยจริง ๆ ก็เพิ่ม filter ได้)
 
 export function containsThai(text: string): boolean {
     return /[\u0E00-\u0E7F]/.test(text);

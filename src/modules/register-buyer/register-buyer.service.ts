@@ -433,7 +433,7 @@ export async function revokeRefreshToken(refreshToken: string): Promise<void> {
 
 // ─── Profile ────────────────────────────────────────────────────────────────
 
-/** ดึงข้อมูล profile ของ user ที่ล็อกอินอยู่ */
+/** Obtiene los datos del perfil del usuario que ha iniciado sesión (ดึงข้อมูล profile ของ user ที่ล็อกอินอยู่) */
 export async function getMyProfile(u_id: number): Promise<ProfileDTO> {
     const [rows] = await pool.query<(RowDataPacket & ProfileDTO)[]>(
         `SELECT u_id, u_username, u_email, u_avatar,
@@ -446,7 +446,7 @@ export async function getMyProfile(u_id: number): Promise<ProfileDTO> {
     return user;
 }
 
-/** อัปเดต username / birthday / gender — email และ provider ห้ามเปลี่ยน */
+/** Actualiza username / birthday / gender — el email y el provider no se pueden cambiar (อัปเดต username / birthday / gender — email และ provider ห้ามเปลี่ยน) */
 export async function updateMyProfile(
     u_id: number,
     data: { u_username: string; u_birthday?: string | null; u_gender?: string | null }
@@ -460,7 +460,7 @@ export async function updateMyProfile(
 
 // ─── Password ────────────────────────────────────────────────────────────────
 
-/** เปลี่ยนรหัสผ่าน — ตรวจสอบ current_password ก่อน แล้วค่อย hash และ update */
+/** Cambia la contraseña — primero verifica current_password, luego la hashea y actualiza (เปลี่ยนรหัสผ่าน — ตรวจสอบ current_password ก่อน แล้วค่อย hash และ update) */
 export async function changePassword(
     u_id: number,
     current_password: string,
@@ -474,7 +474,7 @@ export async function changePassword(
     const user = rows[0];
     if (!user) throw new ApiError(404, "No se encontró la información del usuario.");
 
-    // บัญชี Google / Facebook ไม่มี password — ไม่สามารถเปลี่ยนได้
+    // Las cuentas de Google / Facebook no tienen contraseña — no se puede cambiar (บัญชี Google / Facebook ไม่มี password — ไม่สามารถเปลี่ยนได้)
     if (user.u_provider !== "LOCAL" || !user.u_password) {
         throw new ApiError(400, `Esta cuenta inicia sesión con ${user.u_provider} y no puede cambiar la contraseña.`);
     }
@@ -488,9 +488,9 @@ export async function changePassword(
 
 // ─── Addresses ──────────────────────────────────────────────────────────────
 
-/** ดึงรายการที่อยู่จัดส่งทั้งหมดของ user พร้อมชื่อจังหวัด/อำเภอ/ตำบล */
+/** Obtiene todas las direcciones de envío del usuario junto con el nombre de estado, municipio y colonia (ดึงรายการที่อยู่จัดส่งทั้งหมดของ user พร้อมชื่อจังหวัด/อำเภอ/ตำบล) */
 export async function getMyAddresses(u_id: number): Promise<AddressDTO[]> {
-    // แยก raw type เพราะ MySQL คืน is_default เป็น 0/1 (number) ไม่ใช่ boolean
+    // Se separa el raw type porque MySQL devuelve is_default como 0/1 (number), no boolean (แยก raw type เพราะ MySQL คืน is_default เป็น 0/1 (number) ไม่ใช่ boolean)
     type RawRow = RowDataPacket & Omit<AddressDTO, "is_default"> & { is_default: number };
     const [rows] = await pool.query<RawRow[]>(
         `SELECT
@@ -527,13 +527,13 @@ export async function getMyAddresses(u_id: number): Promise<AddressDTO[]> {
     }));
 }
 
-/** เพิ่มที่อยู่ใหม่ — ถ้า is_default=true จะ reset ที่อยู่อื่นก่อน */
+/** Agrega una nueva dirección — si is_default=true, primero reinicia las demás direcciones (เพิ่มที่อยู่ใหม่ — ถ้า is_default=true จะ reset ที่อยู่อื่นก่อน) */
 export async function addMyAddress(u_id: number, data: AddAddressInput): Promise<void> {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
         if (data.is_default) {
-            // reset ที่อยู่อื่นทั้งหมดก่อนตั้งอันใหม่เป็น default
+            // Reiniciar todas las demás direcciones antes de establecer la nueva como default (reset ที่อยู่อื่นทั้งหมดก่อนตั้งอันใหม่เป็น default)
             await conn.query("UPDATE Locations_buyer SET is_default = 0 WHERE u_id = ?", [u_id]);
         }
         await conn.query("INSERT INTO Locations_buyer SET ?", [{
@@ -553,7 +553,7 @@ export async function addMyAddress(u_id: number, data: AddAddressInput): Promise
     }
 }
 
-/** ตั้งที่อยู่นี้เป็นที่อยู่หลัก (ตรวจสอบว่าเป็นของ user คนนี้ก่อน) */
+/** Establece esta dirección como principal (verifica primero que pertenezca a este usuario) (ตั้งที่อยู่นี้เป็นที่อยู่หลัก (ตรวจสอบว่าเป็นของ user คนนี้ก่อน)) */
 export async function setDefaultAddress(u_id: number, locb_id: number): Promise<void> {
     const conn = await pool.getConnection();
     try {
@@ -574,7 +574,7 @@ export async function setDefaultAddress(u_id: number, locb_id: number): Promise<
     }
 }
 
-/** อัปเดตข้อมูลที่อยู่ — ตรวจสอบว่าเป็นของ user คนนี้ก่อน */
+/** Actualiza los datos de la dirección — verifica primero que pertenezca a este usuario (อัปเดตข้อมูลที่อยู่ — ตรวจสอบว่าเป็นของ user คนนี้ก่อน) */
 export async function updateMyAddress(
     u_id: number,
     locb_id: number,
@@ -616,7 +616,7 @@ export async function updateMyAddress(
     }
 }
 
-/** ลบที่อยู่ — ไม่อนุญาตลบที่อยู่หลัก */
+/** Elimina una dirección — no se permite eliminar la dirección principal (ลบที่อยู่ — ไม่อนุญาตลบที่อยู่หลัก) */
 export async function deleteAddress(u_id: number, locb_id: number): Promise<void> {
     const [rows] = await pool.query<RowDataPacket[]>(
         "SELECT locb_id, is_default FROM Locations_buyer WHERE locb_id = ? AND u_id = ? LIMIT 1",

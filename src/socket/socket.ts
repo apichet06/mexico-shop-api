@@ -19,8 +19,8 @@ export function initSocket(httpServer: HttpServer) {
       methods: ["GET", "POST"],
       credentials: true,
     },
-    // websocket: ใช้กับ Flutter mobile ผ่าน socket_io_client เพื่อให้ chat/notification realtime
-    // polling: ใช้กับเว็บ Next.js/backoffice เดิมที่ตั้ง socket.io-client เป็น transports: ["polling"]
+    // websocket: se usa con Flutter mobile a través de socket_io_client para chat/notificaciones en tiempo real (websocket: ใช้กับ Flutter mobile ผ่าน socket_io_client เพื่อให้ chat/notification realtime)
+    // polling: se usa con la web Next.js/backoffice existente que configura socket.io-client con transports: ["polling"] (polling: ใช้กับเว็บ Next.js/backoffice เดิมที่ตั้ง socket.io-client เป็น transports: ["polling"])
     transports: ["websocket", "polling"],
     pingTimeout: 60000,
     pingInterval: 25000,

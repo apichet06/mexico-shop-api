@@ -48,7 +48,7 @@ export async function getOrderStatusId(
         [statusCode]
     );
     const status = rows[0];
-    if (!status) throw new ApiError(500, `ไม่พบสถานะคำสั่งซื้อ ${statusCode}`);
+    if (!status) throw new ApiError(500, `No se encontró el estado del pedido ${statusCode}.`); // "ไม่พบสถานะคำสั่งซื้อ ${statusCode}"
     return Number(status.s_id);
 }
 
@@ -78,14 +78,14 @@ export async function setOrdersStatus(
     values.push(orderIds);
     if (options.whereUserId) values.push(options.whereUserId);
 
-    // ระหว่าง migration เรายัง sync Orders.status เดิมไว้ด้วย
-    // แต่ logic ใหม่ควรอ่านจาก Status.s_code ผ่าน Orders.s_id เป็นหลัก
+    // Durante la migración seguimos sincronizando también el antiguo Orders.status (ระหว่าง migration เรายัง sync Orders.status เดิมไว้ด้วย)
+    // Pero la lógica nueva debería leer principalmente de Status.s_code a través de Orders.s_id (แต่ logic ใหม่ควรอ่านจาก Status.s_code ผ่าน Orders.s_id เป็นหลัก)
     const [result] = await conn.query<ResultSetHeader>(
         `UPDATE Orders SET ${fields.join(", ")} WHERE or_id IN (?)${userClause}`,
         values
     );
 
     if (result.affectedRows === 0) {
-        throw new ApiError(404, "ไม่พบคำสั่งซื้อที่ต้องอัปเดตสถานะ");
+        throw new ApiError(404, "No se encontró el pedido que se debía actualizar de estado."); // "ไม่พบคำสั่งซื้อที่ต้องอัปเดตสถานะ"
     }
 }

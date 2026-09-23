@@ -7,7 +7,7 @@ let refundColumnsReady: Promise<void> | null = null;
 let refundMethodColumnReady: Promise<void> | null = null;
 let refundImagesTableReady: Promise<void> | null = null;
 
-// สร้างตารางรูปภาพคำขอคืนเงินถ้ายังไม่มี เพื่อรองรับหลักฐานจาก buyer
+// Crea la tabla de imágenes de solicitudes de reembolso si aún no existe, para soportar la evidencia del buyer (สร้างตารางรูปภาพคำขอคืนเงินถ้ายังไม่มี เพื่อรองรับหลักฐานจาก buyer)
 export async function ensureRefundImagesTable(): Promise<void> {
     refundImagesTableReady ??= pool.query(
         `CREATE TABLE IF NOT EXISTS Refund_images (
@@ -22,7 +22,7 @@ export async function ensureRefundImagesTable(): Promise<void> {
     return refundImagesTableReady;
 }
 
-// เพิ่ม column เลข tracking พัสดุคืนสินค้าใน Refunds ถ้ายังไม่มี
+// Agrega la column del número de tracking de devolución en Refunds si aún no existe (เพิ่ม column เลข tracking พัสดุคืนสินค้าใน Refunds ถ้ายังไม่มี)
 export async function ensureRefundReturnTrackingColumn(): Promise<void> {
     refundColumnsReady ??= pool.query<(RowDataPacket & { column_name: string })[]>(
         `SELECT COLUMN_NAME AS column_name
@@ -41,7 +41,7 @@ export async function ensureRefundReturnTrackingColumn(): Promise<void> {
     return refundColumnsReady;
 }
 
-// รองรับ Conekta พร้อมเก็บค่าเดิมไว้สำหรับประวัติรายการเก่า
+// Soporta Conekta manteniendo los valores anteriores para el historial de registros antiguos (รองรับ Conekta พร้อมเก็บค่าเดิมไว้สำหรับประวัติรายการเก่า)
 export async function ensureRefundMethodColumn(): Promise<void> {
     refundMethodColumnReady ??= pool.query<(RowDataPacket & { column_name: string; column_type: string })[]>(
         `SELECT COLUMN_NAME AS column_name, COLUMN_TYPE AS column_type
@@ -62,7 +62,7 @@ export async function ensureRefundMethodColumn(): Promise<void> {
     return refundMethodColumnReady;
 }
 
-// เตรียม column ขนส่งใน Orders เช่น tracking, label, zone และข้อมูลต้นทุน shipping
+// Prepara columns de envío en Orders, como tracking, label, zone y los datos de costo de shipping (เตรียม column ขนส่งใน Orders เช่น tracking, label, zone และข้อมูลต้นทุน shipping)
 export async function ensureOrderShipmentLabelColumn(): Promise<void> {
     orderShippingColumnsReady ??= pool.query<(RowDataPacket & { column_name: string })[]>(
         `SELECT COLUMN_NAME AS column_name
@@ -74,7 +74,7 @@ export async function ensureOrderShipmentLabelColumn(): Promise<void> {
         .then(async ([columns]) => {
             const existing = new Set(columns.map((column) => column.column_name));
             if (!existing.has("label_url")) {
-                // ผู้ให้บริการขนส่งส่ง label URL กลับมาหลังสร้าง shipment; เก็บแยกจาก tracking_url เพื่อใช้พิมพ์ใบปะหน้ากล่องโดยตรง
+                // El proveedor de envío devuelve la label URL después de crear el shipment; se guarda separada de tracking_url para imprimir la etiqueta directamente (ผู้ให้บริการขนส่งส่ง label URL กลับมาหลังสร้าง shipment; เก็บแยกจาก tracking_url เพื่อใช้พิมพ์ใบปะหน้ากล่องโดยตรง)
                 await pool.query("ALTER TABLE Orders ADD COLUMN label_url TEXT NULL AFTER tracking_url");
             }
             if (!existing.has("provider_shipping_cost")) {
@@ -86,7 +86,7 @@ export async function ensureOrderShipmentLabelColumn(): Promise<void> {
     return orderShippingColumnsReady;
 }
 
-// สร้างตาราง shipment, shipment item และ event tracking สำหรับ order ถ้ายังไม่มี
+// Crea las tablas de shipment, shipment item y event tracking para order si aún no existen (สร้างตาราง shipment, shipment item และ event tracking สำหรับ order ถ้ายังไม่มี)
 export async function ensureOrderShipmentTables(): Promise<void> {
     orderShipmentTablesReady ??= (async () => {
         await pool.query(`

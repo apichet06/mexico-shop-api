@@ -93,7 +93,7 @@ function signAccessToken(user: RegisterBuyerDTO): string {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new ApiError(500, AuthMessages.secret);
 
-    // access token อายุสั้น ถ้าหมดอายุ frontend จะใช้ refresh cookie ขอ token ใหม่อัตโนมัติ
+    // El access token tiene una vida corta; si expira, el frontend usará la cookie de refresh para solicitar un token nuevo automáticamente (access token อายุสั้น ถ้าหมดอายุ frontend จะใช้ refresh cookie ขอ token ใหม่อัตโนมัติ)
     return jwt.sign(
         { userId: user.u_id, userEmail: user.u_email, username: user.u_username },
         secret,
@@ -118,8 +118,8 @@ function shouldUseCrossSiteCookie(req: Request): boolean {
         const requestProtocol = req.protocol;
         const requestHost = req.get("host") ?? "";
 
-        // dev ของเราอาจเป็น https://localhost:3000 -> http://localhost:5000
-        // browser มองว่า cross-site เพราะ scheme ต่างกัน จึงต้องใช้ SameSite=None; Secure
+        // En desarrollo, nuestro entorno puede ser https://localhost:3000 -> http://localhost:5000 (dev ของเราอาจเป็น https://localhost:3000 -> http://localhost:5000)
+        // El navegador lo considera cross-site porque el scheme es diferente, por eso se debe usar SameSite=None; Secure (browser มองว่า cross-site เพราะ scheme ต่างกัน จึงต้องใช้ SameSite=None; Secure)
         return originUrl.protocol.replace(":", "") !== requestProtocol || originUrl.host !== requestHost;
     } catch {
         return process.env.NODE_ENV === "production";
@@ -137,7 +137,7 @@ function refreshCookieOptions(req: Request) {
 }
 
 function setRefreshCookie(req: Request, res: Response, refreshToken: string) {
-    // refresh token เก็บใน httpOnly cookie เพื่อไม่ให้ JavaScript อ่าน token อายุยาวตัวนี้ได้
+    // El refresh token se guarda en una cookie httpOnly para que JavaScript no pueda leer este token de larga duración (refresh token เก็บใน httpOnly cookie เพื่อไม่ให้ JavaScript อ่าน token อายุยาวตัวนี้ได้)
     res.cookie(service.refreshTokenConfig.cookieName, refreshToken, {
         ...refreshCookieOptions(req),
         maxAge: service.refreshTokenConfig.maxAgeMs,
@@ -274,7 +274,7 @@ export const refresh = asyncHandler(async (req, res) => {
     const refreshToken = parseCookie(req.headers.cookie, service.refreshTokenConfig.cookieName);
     if (!refreshToken) throw new ApiError(401, "No se encontró el refresh token. Vuelve a iniciar sesión.");
 
-    // หมุน refresh token ทุกครั้งที่ใช้ เพื่อลดความเสี่ยงถ้า token เก่าหลุดออกไป
+    // Se rota el refresh token cada vez que se usa, para reducir el riesgo si el token anterior se filtra (หมุน refresh token ทุกครั้งที่ใช้ เพื่อลดความเสี่ยงถ้า token เก่าหลุดออกไป)
     const result = await service.rotateRefreshToken(refreshToken, {
         user_agent: req.get("user-agent") ?? null,
         ip_address: req.ip ?? null,

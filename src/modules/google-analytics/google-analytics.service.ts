@@ -25,10 +25,10 @@ function hasExplicitCredentials() {
 
 function getClient() {
     if (!PROPERTY_ID) {
-        throw new ApiError(503, "ยังไม่ได้ตั้งค่า GA4_PROPERTY_ID");
+        throw new ApiError(503, "Todavía no se ha configurado GA4_PROPERTY_ID."); // "ยังไม่ได้ตั้งค่า GA4_PROPERTY_ID"
     }
     if (!hasExplicitCredentials()) {
-        throw new ApiError(503, "ยังไม่ได้ตั้งค่า credential สำหรับ Google Analytics Data API");
+        throw new ApiError(503, "Todavía no se han configurado las credenciales para Google Analytics Data API."); // "ยังไม่ได้ตั้งค่า credential สำหรับ Google Analytics Data API"
     }
     if (analyticsClient) return analyticsClient;
 
@@ -255,7 +255,7 @@ export async function getDashboard(range: GoogleAnalyticsRange): Promise<GoogleA
         };
     } catch (error: any) {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(502, "ไม่สามารถดึงข้อมูลจาก Google Analytics ได้", {
+        throw new ApiError(502, "No se pudo obtener la información de Google Analytics.", { // "ไม่สามารถดึงข้อมูลจาก Google Analytics ได้"
             message: error?.message,
             code: error?.code,
         });

@@ -5,11 +5,11 @@ export type ReviewDTO = {
     u_id: number
     u_username: string
     u_avatar: string | null
-    massages: string        // ข้อความรีวิว
-    delivery_score: number  // คะแนนการจัดส่ง 1-5
-    product_score: number   // คะแนนสินค้า 1-5
+    massages: string        // Texto de la reseña (ข้อความรีวิว)
+    delivery_score: number  // Calificación de envío 1-5 (คะแนนการจัดส่ง 1-5)
+    product_score: number   // Calificación del producto 1-5 (คะแนนสินค้า 1-5)
     create_at: string
-    images: string[]        // url รูปภาพประกอบ
+    images: string[]        // url de las imágenes adjuntas (url รูปภาพประกอบ)
 }
 
 export type CreateReviewInput = {

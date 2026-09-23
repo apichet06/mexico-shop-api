@@ -39,7 +39,7 @@ function safeDecodeUrl(value: string): string {
 export async function recordEvent(input: WebsiteAnalyticsEventInput, context: { ip?: string | null; userAgent?: string | null }): Promise<void> {
     const ip = normalizeIp(context.ip);
 
-    // เก็บเฉพาะ hash เพื่อใช้ dedupe/aggregate ได้ โดยไม่บันทึก visitor id หรือ IP ดิบลงฐานข้อมูล
+    // Guarda solo el hash para poder deduplicar/agregar datos, sin registrar el visitor id ni la IP en crudo en la base de datos (เก็บเฉพาะ hash เพื่อใช้ dedupe/aggregate ได้ โดยไม่บันทึก visitor id หรือ IP ดิบลงฐานข้อมูล)
     const visitorIdHash = sha256(input.visitor_id);
     const ipHash = ip ? sha256(ip) : null;
 
@@ -157,7 +157,7 @@ function buildDailySeries(startDate: string, endDate: string, rows: any[]): Webs
     const end = parseYmd(endDate);
     const days = Math.max(Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1, 1);
 
-    // เติมวันที่ไม่มี event เป็น 0 เพื่อให้ chart แสดงช่วงวันที่ตาม filter เสมอ
+    // Rellena con 0 los días sin eventos para que el gráfico siempre muestre el rango de fechas según el filtro (เติมวันที่ไม่มี event เป็น 0 เพื่อให้ chart แสดงช่วงวันที่ตาม filter เสมอ)
     return Array.from({ length: days }, (_, index) => {
         const date = new Date(start);
         date.setHours(0, 0, 0, 0);

@@ -33,7 +33,7 @@ function buildBackofficeUrl(path: string): string | null {
 
 function getBearerToken(req: Request): string {
     const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) throw new ApiError(401, "ไม่พบ seller application token");
+    if (!header?.startsWith("Bearer ")) throw new ApiError(401, "No se encontró el token de la solicitud de vendedor."); // "ไม่พบ seller application token"
     return header.slice("Bearer ".length);
 }
 
@@ -43,7 +43,7 @@ function verifySellerApplicationToken(req: Request): SellerApplicationTokenPaylo
     try {
         return jwt.verify(getBearerToken(req), secret) as SellerApplicationTokenPayload;
     } catch {
-        throw new ApiError(401, "seller application token ไม่ถูกต้องหรือหมดอายุ");
+        throw new ApiError(401, "El token de la solicitud de vendedor no es válido o ha caducado."); // "seller application token ไม่ถูกต้องหรือหมดอายุ"
     }
 }
 
@@ -71,7 +71,7 @@ function sendFinalizedStoreRegistrationEmail(session: SellerApplicationSession, 
 
 export const googleStart = asyncHandler(async (req, res) => {
     const { access_token } = req.body ?? {};
-    if (!access_token) throw new ApiError(400, "จำเป็นต้องระบุ access_token");
+    if (!access_token) throw new ApiError(400, "Debes proporcionar access_token."); // "จำเป็นต้องระบุ access_token"
 
     const profile = await service.verifyGoogleAccessToken(access_token);
     const session = await service.findOrCreateApplication(profile);
@@ -81,7 +81,7 @@ export const googleStart = asyncHandler(async (req, res) => {
 
 export const facebookStart = asyncHandler(async (req, res) => {
     const { access_token } = req.body ?? {};
-    if (!access_token) throw new ApiError(400, "จำเป็นต้องระบุ access_token");
+    if (!access_token) throw new ApiError(400, "Debes proporcionar access_token."); // "จำเป็นต้องระบุ access_token"
 
     const profile = await service.verifyFacebookAccessToken(access_token);
     const session = await service.findOrCreateApplication(profile);
@@ -103,7 +103,7 @@ export const saveStep = asyncHandler(async (req, res) => {
     const { step, step_key, data, next_step } = req.body ?? {};
 
     if (!step || !step_key || typeof data !== "object" || data === null || Array.isArray(data)) {
-        throw new ApiError(400, "ข้อมูล step ไม่ครบถ้วน");
+        throw new ApiError(400, "Los datos del paso están incompletos."); // "ข้อมูล step ไม่ครบถ้วน"
     }
 
     const saveInput: Parameters<typeof service.saveApplicationStep>[0] = {
@@ -130,10 +130,10 @@ export const finalizeRegister = asyncHandler(async (req, res) => {
             payload.sellerApplicationAccountId,
         );
         if (session.application.is_finalized) {
-            throw new ApiError(400, "ใบสมัครนี้สร้างร้านแล้ว");
+            throw new ApiError(400, "Esta solicitud ya generó una tienda."); // "ใบสมัครนี้สร้างร้านแล้ว"
         }
         if (req.body.pdpa_accepted !== "true") {
-            throw new ApiError(400, "กรุณายอมรับนโยบายความเป็นส่วนตัวและเงื่อนไขก่อนส่งใบสมัคร");
+            throw new ApiError(400, "Debes aceptar el aviso de privacidad y los términos antes de enviar la solicitud."); // "กรุณายอมรับนโยบายความเป็นส่วนตัวและเงื่อนไขก่อนส่งใบสมัคร"
         }
 
         const files = req.files as {
@@ -148,7 +148,7 @@ export const finalizeRegister = asyncHandler(async (req, res) => {
         const employees = JSON.parse(req.body.employees ?? "[]");
         const documentsMeta = JSON.parse(req.body.documents_meta ?? "[]");
         if (!Array.isArray(employees) || employees.length !== 1 || employees[0]?.e_status !== "Owner") {
-            throw new ApiError(400, "การสมัครผู้ขายต้องมี Primary Owner เพียง 1 คน");
+            throw new ApiError(400, "La solicitud de vendedor debe tener un único Primary Owner."); // "การสมัครผู้ขายต้องมี Primary Owner เพียง 1 คน"
         }
 
         let stImagePath: string | null = null;
@@ -188,7 +188,7 @@ export const finalizeRegister = asyncHandler(async (req, res) => {
 
         const employeesWithPassword = await Promise.all(employees.map(async (emp: any) => {
             if (!emp.e_password || String(emp.e_password).length < 8) {
-                throw new ApiError(400, "ผู้ใช้งานร้านทุกคนต้องตั้งรหัสผ่านอย่างน้อย 8 ตัวอักษร");
+                throw new ApiError(400, "Todos los usuarios de la tienda deben establecer una contraseña de al menos 8 caracteres."); // "ผู้ใช้งานร้านทุกคนต้องตั้งรหัสผ่านอย่างน้อย 8 ตัวอักษร"
             }
 
             const password = String(emp.e_password);

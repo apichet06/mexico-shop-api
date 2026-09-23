@@ -18,7 +18,7 @@ chatRouter.post("/conversations/:conv_id/images", BuyerAuth, upload.array("image
 // Admin routes (employee JWT)
 chatRouter.get("/admin/conversations", Auth, controller.adminListConversations);
 chatRouter.post("/admin/store-conversation", Auth, controller.adminGetOrCreateStoreConversation);
-// หา/สร้างห้องแชทกับ buyer เฉพาะราย ใช้โดย backoffice เมื่อต้องการส่งแจ้งเตือนอัตโนมัติ (เช่น อนุมัติ/ปฏิเสธ refund)
+// Busca o crea una sala de chat con un buyer específico, usada por el backoffice cuando necesita enviar notificaciones automáticas (por ejemplo, aprobar/rechazar un refund) (หา/สร้างห้องแชทกับ buyer เฉพาะราย ใช้โดย backoffice เมื่อต้องการส่งแจ้งเตือนอัตโนมัติ (เช่น อนุมัติ/ปฏิเสธ refund))
 chatRouter.post("/admin/buyer-conversation", Auth, controller.adminGetOrCreateBuyerConversation);
 chatRouter.get("/admin/conversations/:conv_id/messages", Auth, controller.adminGetMessages);
 chatRouter.patch("/admin/conversations/:conv_id/read", Auth, controller.adminMarkAsRead);

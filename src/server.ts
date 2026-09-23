@@ -20,11 +20,11 @@ const httpServer = http.createServer(app);
 
 initSocket(httpServer);
 
-// ตรวจสอบ order ที่หมดเวลาชำระเงินทุก 60 วินาที → ยกเลิกและคืน stock อัตโนมัติ
+// Revisa cada 60 segundos las órdenes cuyo tiempo de pago venció → cancela y devuelve el stock automáticamente (ตรวจสอบ order ที่หมดเวลาชำระเงินทุก 60 วินาที → ยกเลิกและคืน stock อัตโนมัติ)
 startPaymentExpirationJob();
 startConektaReconciliationJob();
 
-// ยืนยันรับสินค้าอัตโนมัติเมื่อส่งสำเร็จครบ 2 วันและไม่มีคำขอคืนเงินค้างอยู่
+// Confirma automáticamente la recepción del producto cuando han pasado 2 días desde la entrega exitosa y no hay solicitudes de reembolso pendientes (ยืนยันรับสินค้าอัตโนมัติเมื่อส่งสำเร็จครบ 2 วันและไม่มีคำขอคืนเงินค้างอยู่)
 startAutoReceiveDeliveredOrdersJob();
 
 

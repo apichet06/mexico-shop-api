@@ -5,10 +5,10 @@ import { ApiError, isDupError, isFkConstraintError } from "../../shared/errors/A
 
 import { CommonMessages } from "../../shared/messages/common.messages.js";
 
-// ระบบเหลือ Catalog หลักเพียงรายการเดียว แบรนด์ใหม่จึงไม่ต้องรับเว็บไซต์จากผู้ใช้
+// El sistema mantiene un único Catalog principal, por lo que una marca nueva ya no necesita recibir el sitio web del usuario (ระบบเหลือ Catalog หลักเพียงรายการเดียว แบรนด์ใหม่จึงไม่ต้องรับเว็บไซต์จากผู้ใช้)
 const PRIMARY_CATALOG_ID = 1;
-const BRAND_DUPLICATE_MESSAGE = "แบรนด์นี้มีอยู่แล้ว";
-const BRAND_INDEX_MESSAGE = "โครงสร้างฐานข้อมูลแบรนด์ยังเช็กซ้ำเฉพาะชื่ออยู่ กรุณาเปลี่ยน unique index เป็น (b_name, ctl_id)";
+const BRAND_DUPLICATE_MESSAGE = "Esta marca ya existe."; // "แบรนด์นี้มีอยู่แล้ว"
+const BRAND_INDEX_MESSAGE = "La estructura de la base de datos de marcas todavía valida duplicados solo por el nombre; cambia el unique index a (b_name, ctl_id)."; // "โครงสร้างฐานข้อมูลแบรนด์ยังเช็กซ้ำเฉพาะชื่ออยู่ กรุณาเปลี่ยน unique index เป็น (b_name, ctl_id)"
 
 export async function listBrands(): Promise<BrandsDTO[]> {
     const [rows] = await pool.query<(RowDataPacket & BrandsDTO)[]>(`

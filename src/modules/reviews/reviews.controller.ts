@@ -14,8 +14,8 @@ export const list = asyncHandler(async (req, res) => {
     res.json({ data: result })
 })
 
-// GET /api/reviews/check?pv_id=1  (ต้อง BuyerAuth)
-// ตรวจว่า user มีสิทธิ์รีวิวหรือไม่ และคืน oi_id ที่ยังไม่ได้รีวิว
+// GET /api/reviews/check?pv_id=1  (requiere BuyerAuth) (ต้อง BuyerAuth)
+// Verifica si el user tiene permiso para reseñar y devuelve el oi_id que aún no se ha reseñado (ตรวจว่า user มีสิทธิ์รีวิวหรือไม่ และคืน oi_id ที่ยังไม่ได้รีวิว)
 export const checkReviewable = asyncHandler(async (req, res) => {
     const u_id = req.userId
     const pv_id = Number(req.query.pv_id)
@@ -27,7 +27,7 @@ export const checkReviewable = asyncHandler(async (req, res) => {
     res.json({ data: { canReview: reviewableItems.length > 0, oi_ids: reviewableItems } })
 })
 
-// POST /api/reviews  (ต้อง BuyerAuth, multipart/form-data)
+// POST /api/reviews  (requiere BuyerAuth, multipart/form-data) (ต้อง BuyerAuth, multipart/form-data)
 export const create = asyncHandler(async (req, res) => {
     const u_id = req.userId
     if (!u_id) throw new ApiError(401, "No se encontró la información del usuario.")

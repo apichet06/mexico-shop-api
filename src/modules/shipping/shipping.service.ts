@@ -28,7 +28,7 @@ export async function ensureShippingCarrierProviderColumn(): Promise<void> {
 
 function providerCode(value: string) {
   const normalized = normalizeSkydropxCarrierCode(value);
-  if (!normalized) throw new ApiError(400, "จำเป็นต้องระบุ provider_code ของ Skydropx");
+  if (!normalized) throw new ApiError(400, "Es necesario indicar el provider_code de Skydropx."); // "จำเป็นต้องระบุ provider_code ของ Skydropx"
   return normalized;
 }
 
@@ -46,9 +46,9 @@ export async function createCarrier(input: CreateCarrierInput): Promise<number> 
   await ensureShippingCarrierProviderColumn();
   const code = input.sc_code.trim().toUpperCase();
   const [duplicates] = await pool.query("SELECT sc_id FROM Shipping_carriers WHERE sc_code = ?", [code]);
-  if ((duplicates as unknown[]).length) throw new ApiError(409, `รหัสขนส่ง "${code}" มีอยู่แล้วในระบบ`);
+  if ((duplicates as unknown[]).length) throw new ApiError(409, `El código de envío "${code}" ya existe en el sistema.`); // `รหัสขนส่ง "${code}" มีอยู่แล้วในระบบ`
   if (input.calc_type === "CHARGEABLE_WEIGHT" && !input.vol_divisor) {
-    throw new ApiError(400, "จำเป็นต้องระบุ vol_divisor สำหรับน้ำหนักเชิงปริมาตร");
+    throw new ApiError(400, "Es necesario indicar vol_divisor para el peso volumétrico."); // "จำเป็นต้องระบุ vol_divisor สำหรับน้ำหนักเชิงปริมาตร"
   }
   const [result] = await pool.query(
     `INSERT INTO Shipping_carriers
@@ -81,7 +81,7 @@ export async function updateCarrier(scId: number, input: UpdateCarrierInput): Pr
   if (!fields.length) return;
   values.push(scId);
   const [result] = await pool.query(`UPDATE Shipping_carriers SET ${fields.join(", ")} WHERE sc_id = ?`, values);
-  if ((result as { affectedRows: number }).affectedRows === 0) throw new ApiError(404, "ไม่พบข้อมูลขนส่ง");
+  if ((result as { affectedRows: number }).affectedRows === 0) throw new ApiError(404, "No se encontró la información de envío."); // "ไม่พบข้อมูลขนส่ง"
 }
 
 export async function toggleCarrierActive(scId: number): Promise<void> {
@@ -89,25 +89,25 @@ export async function toggleCarrierActive(scId: number): Promise<void> {
     "UPDATE Shipping_carriers SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE sc_id = ?",
     [scId]
   );
-  if ((result as { affectedRows: number }).affectedRows === 0) throw new ApiError(404, "ไม่พบข้อมูลขนส่ง");
+  if ((result as { affectedRows: number }).affectedRows === 0) throw new ApiError(404, "No se encontró la información de envío."); // "ไม่พบข้อมูลขนส่ง"
 }
 
 export async function deleteCarrier(scId: number): Promise<void> {
   const [result] = await pool.query("DELETE FROM Shipping_carriers WHERE sc_id = ?", [scId]);
-  if ((result as { affectedRows: number }).affectedRows === 0) throw new ApiError(404, "ไม่พบข้อมูลขนส่ง");
+  if ((result as { affectedRows: number }).affectedRows === 0) throw new ApiError(404, "No se encontró la información de envío."); // "ไม่พบข้อมูลขนส่ง"
 }
 
 function assertMexicanPostcode(value: string, label: string) {
-  if (!/^\d{5}$/.test(value)) throw new ApiError(400, `${label}ต้องเป็นรหัสไปรษณีย์เม็กซิโก 5 หลัก`);
+  if (!/^\d{5}$/.test(value)) throw new ApiError(400, `${label} debe ser un código postal mexicano de 5 dígitos.`); // `${label}ต้องเป็นรหัสไปรษณีย์เม็กซิโก 5 หลัก`
 }
 
 export async function calculateShipping(input: CalculateInput): Promise<CalculateResult[]> {
   await ensureShippingCarrierProviderColumn();
-  assertMexicanPostcode(String(input.postcode), "รหัสไปรษณีย์ปลายทาง");
-  if (!input.origin_postcode) throw new ApiError(400, "ไม่พบรหัสไปรษณีย์ต้นทางสำหรับขอราคา Skydropx");
-  assertMexicanPostcode(String(input.origin_postcode), "รหัสไปรษณีย์ต้นทาง");
+  assertMexicanPostcode(String(input.postcode), "El código postal de destino"); // "รหัสไปรษณีย์ปลายทาง"
+  if (!input.origin_postcode) throw new ApiError(400, "No se encontró el código postal de origen para cotizar con Skydropx."); // "ไม่พบรหัสไปรษณีย์ต้นทางสำหรับขอราคา Skydropx"
+  assertMexicanPostcode(String(input.origin_postcode), "El código postal de origen"); // "รหัสไปรษณีย์ต้นทาง"
   if (!Number.isFinite(Number(input.weight_g)) || Number(input.weight_g) <= 0) {
-    throw new ApiError(400, "น้ำหนักต้องมากกว่า 0");
+    throw new ApiError(400, "El peso debe ser mayor que 0."); // "น้ำหนักต้องมากกว่า 0"
   }
 
   const [rows] = await pool.query(
@@ -117,7 +117,7 @@ export async function calculateShipping(input: CalculateInput): Promise<Calculat
      ORDER BY sc_id`
   );
   const carriers = rows as ShippingCarrier[];
-  if (!carriers.length) throw new ApiError(400, "ยังไม่มี carrier ของ Skydropx ที่เปิดใช้งาน");
+  if (!carriers.length) throw new ApiError(400, "Todavía no hay ningún carrier de Skydropx habilitado."); // "ยังไม่มี carrier ของ Skydropx ที่เปิดใช้งาน"
 
   const quotes = await quoteSkydropxRates({
     from: {

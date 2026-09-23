@@ -6,19 +6,19 @@ import { getIO } from "../../socket/socket.js";
 import { fileUploadImage } from "../../shared/middlewares/fileUploadImage.js";
 
 // ── Auto-reply ─────────────────────────────────────────────────────────────
-// ถ้า admin ไม่ตอบภายใน AUTO_REPLY_DELAY_MS หลัง buyer ส่งข้อความ
-// ระบบจะส่งข้อความ bot อัตโนมัติเพื่อแจ้ง buyer ว่าเจ้าหน้าที่ติดภารกิจ
+// Si el admin no responde dentro de AUTO_REPLY_DELAY_MS después de que el buyer envía un mensaje (ถ้า admin ไม่ตอบภายใน AUTO_REPLY_DELAY_MS หลัง buyer ส่งข้อความ)
+// el sistema enviará un mensaje automático del bot para avisarle al buyer que el personal está ocupado (ระบบจะส่งข้อความ bot อัตโนมัติเพื่อแจ้ง buyer ว่าเจ้าหน้าที่ติดภารกิจ)
 
-// เก็บ timer ของแต่ละห้องแชท (conv_id → timer handle)
+// Guarda el timer de cada sala de chat (conv_id → timer handle) (เก็บ timer ของแต่ละห้องแชท)
 const autoReplyTimers = new Map<number, NodeJS.Timeout>();
 
-// แก้ตรงนี้เพื่อปรับเวลาและข้อความ
-const AUTO_REPLY_DELAY_MS = 60_000; // 1 นาที
+// Modifica aquí para ajustar el tiempo y el mensaje (แก้ตรงนี้เพื่อปรับเวลาและข้อความ)
+const AUTO_REPLY_DELAY_MS = 60_000; // 1 minuto (1 นาที)
 const AUTO_REPLY_MESSAGE =
     "Lamentamos la demora. En este momento, nuestros agentes están ocupados y no pueden responder.\n" +
     "Te responderemos lo antes posible. Gracias por comunicarte con nosotros.";
 
-// เรียกเมื่อ admin ส่งข้อความ เพื่อยกเลิก timer ที่รออยู่
+// Se llama cuando el admin envía un mensaje, para cancelar el timer pendiente (เรียกเมื่อ admin ส่งข้อความ เพื่อยกเลิก timer ที่รออยู่)
 function cancelAutoReply(conv_id: number): void {
     const existing = autoReplyTimers.get(conv_id);
     if (existing) {
@@ -27,9 +27,9 @@ function cancelAutoReply(conv_id: number): void {
     }
 }
 
-// เรียกเมื่อ buyer ส่งข้อความ — reset timer ทุกครั้งที่ buyer ส่งใหม่
+// Se llama cuando el buyer envía un mensaje — reinicia el timer cada vez que el buyer envía uno nuevo (เรียกเมื่อ buyer ส่งข้อความ — reset timer ทุกครั้งที่ buyer ส่งใหม่)
 function scheduleAutoReply(conv_id: number): void {
-    cancelAutoReply(conv_id); // reset ถ้า timer เดิมยังค้างอยู่
+    cancelAutoReply(conv_id); // reinicia si el timer anterior todavía está pendiente (reset ถ้า timer เดิมยังค้างอยู่)
     const timer = setTimeout(() => {
         autoReplyTimers.delete(conv_id);
         sendAutoReply(conv_id).catch(() => { /* no-op */ });
@@ -37,7 +37,7 @@ function scheduleAutoReply(conv_id: number): void {
     autoReplyTimers.set(conv_id, timer);
 }
 
-// ตรวจสอบอีกครั้งก่อนส่ง เผื่อ admin ตอบมาพอดีช่วงที่ timer กำลังจะ fire (race condition)
+// Verifica una vez más antes de enviar, por si el admin responde justo cuando el timer está a punto de disparar (race condition) (ตรวจสอบอีกครั้งก่อนส่ง เผื่อ admin ตอบมาพอดีช่วงที่ timer กำลังจะ fire)
 async function sendAutoReply(conv_id: number): Promise<void> {
     const [checkRows] = await pool.query<(RowDataPacket & { has_reply: number })[]>(
         `SELECT EXISTS(
@@ -52,18 +52,18 @@ async function sendAutoReply(conv_id: number): Promise<void> {
         ) AS has_reply`,
         [conv_id, conv_id]
     );
-    if (checkRows[0]?.has_reply) return; // admin ตอบแล้ว ไม่ต้องส่ง bot
+    if (checkRows[0]?.has_reply) return; // el admin ya respondió, no es necesario enviar el bot (admin ตอบแล้ว ไม่ต้องส่ง bot)
 
     const [convRows] = await pool.query<(RowDataPacket & { st_id: number; channel: string })[]>(
         `SELECT st_id, channel FROM Conversations WHERE conv_id = ?`,
         [conv_id]
     );
-    if (!convRows[0] || convRows[0].channel === 'support') return; // ไม่ส่งในห้อง store-to-store
+    if (!convRows[0] || convRows[0].channel === 'support') return; // no enviar en salas store-to-store (ไม่ส่งในห้อง store-to-store)
 
     const stId = convRows[0].st_id;
     const message = await insertBotMessage(conv_id, AUTO_REPLY_MESSAGE, 'text');
 
-    // ดึงรายชื่อ buyer ในห้องนี้เพื่อ emit ไปที่ USER room (อัปเดต unread badge storefront)
+    // Obtiene la lista de buyers en esta sala para emitir al USER room (actualiza el badge de no leídos en el storefront) (ดึงรายชื่อ buyer ในห้องนี้เพื่อ emit ไปที่ USER room (อัปเดต unread badge storefront))
     const [participantUsers] = await pool.query<(RowDataPacket & { actor_id: number })[]>(
         `SELECT actor_id FROM Conversation_participants WHERE conv_id = ? AND actor_type = 'user'`,
         [conv_id]
@@ -252,10 +252,10 @@ async function canAdminAccessConversation(convId: number, storeId: number): Prom
          FROM Conversations c
          WHERE c.conv_id = ?
            AND (
-                -- ห้อง buyer: ร้านเจ้าของสินค้า/platform ดูได้จาก c.st_id
+                -- Sala de buyer: la tienda dueña del producto/la plataforma puede verla mediante c.st_id (ห้อง buyer: ร้านเจ้าของสินค้า/platform ดูได้จาก c.st_id)
                 (c.channel <> 'support' AND c.st_id = ?)
                 OR
-                -- ห้องร้านต่อร้าน: ร้านปลายทางดูได้จาก c.st_id, ร้านต้นทางดูได้จาก participant store
+                -- Sala tienda a tienda: la tienda destino puede verla mediante c.st_id, la tienda origen mediante participant store (ห้องร้านต่อร้าน: ร้านปลายทางดูได้จาก c.st_id, ร้านต้นทางดูได้จาก participant store)
                 (c.channel = 'support' AND (
                     c.st_id = ?
                     OR EXISTS (
@@ -304,7 +304,7 @@ export async function adminGetOrCreateStoreConversation(storeId: number, targetS
 
     const conn = await pool.getConnection();
     try {
-        // ห้องร้านต่อร้านอิง Store จริง: c.st_id คือร้านปลายทาง, participant store คือร้านต้นทาง
+        // La sala tienda a tienda se basa en la tienda real: c.st_id es la tienda destino, participant store es la tienda origen (ห้องร้านต่อร้านอิง Store จริง: c.st_id คือร้านปลายทาง, participant store คือร้านต้นทาง)
         const [existing] = await conn.query<(RowDataPacket & ConversationDTO)[]>(
             `SELECT c.* FROM Conversations c
              INNER JOIN Conversation_participants cp
@@ -332,8 +332,8 @@ export async function adminGetOrCreateStoreConversation(storeId: number, targetS
         );
 
         if (reverseExisting[0]) {
-            // ถ้ามีห้องคู่ร้านนี้อยู่แล้วในทิศกลับ ให้ใช้ห้องเดิม
-            // ร้านปลายทางมีสิทธิ์จาก Conversations.st_id อยู่แล้ว จึงไม่ต้องเพิ่ม participant ซ้ำ
+            // Si ya existe esta sala del par de tiendas en la dirección inversa, usa la sala existente (ถ้ามีห้องคู่ร้านนี้อยู่แล้วในทิศกลับ ให้ใช้ห้องเดิม)
+            // La tienda destino ya tiene acceso mediante Conversations.st_id, por lo que no es necesario agregar el participant de nuevo (ร้านปลายทางมีสิทธิ์จาก Conversations.st_id อยู่แล้ว จึงไม่ต้องเพิ่ม participant ซ้ำ)
             return reverseExisting[0];
         }
 
@@ -558,13 +558,13 @@ export async function postRefundContextToConversation(options: {
     }
 }
 
-// หา/สร้างห้องแชทกับ buyer เฉพาะราย
-// ใช้โดย backoffice เพื่อส่งแจ้งเตือนอัตโนมัติเข้าห้องแชทของ buyer หลังดำเนินการ order
-// (เช่น อนุมัติ/ปฏิเสธคืนเงิน, ยืนยันรับสินค้าคืน)
+// Busca o crea una sala de chat con un buyer específico (หา/สร้างห้องแชทกับ buyer เฉพาะราย)
+// Usado por el backoffice para enviar notificaciones automáticas a la sala de chat del buyer después de procesar una orden (ใช้โดย backoffice เพื่อส่งแจ้งเตือนอัตโนมัติเข้าห้องแชทของ buyer หลังดำเนินการ order)
+// (por ejemplo: aprobar/rechazar un reembolso, confirmar la recepción de una devolución) (เช่น อนุมัติ/ปฏิเสธคืนเงิน, ยืนยันรับสินค้าคืน)
 export async function adminGetOrCreateBuyerConversation(storeId: number, buyerId: number): Promise<ConversationDTO> {
     const conn = await pool.getConnection();
     try {
-        // ลองหาห้อง open ที่มีอยู่ก่อน ไม่ต้องสร้างซ้ำถ้า buyer เคยคุยกับร้านนี้แล้ว
+        // Intenta encontrar primero una sala abierta existente; no crear una nueva si el buyer ya habló con esta tienda antes (ลองหาห้อง open ที่มีอยู่ก่อน ไม่ต้องสร้างซ้ำถ้า buyer เคยคุยกับร้านนี้แล้ว)
         const [existing] = await conn.query<(RowDataPacket & ConversationDTO)[]>(
             `SELECT c.* FROM Conversations c
              INNER JOIN Conversation_participants cp ON cp.conv_id = c.conv_id
@@ -575,7 +575,7 @@ export async function adminGetOrCreateBuyerConversation(storeId: number, buyerId
 
         if (existing[0]) return existing[0];
 
-        // ไม่มีห้องเดิม — สร้างใหม่พร้อม participant buyer
+        // No existe una sala previa — crea una nueva junto con el participant buyer (ไม่มีห้องเดิม — สร้างใหม่พร้อม participant buyer)
         await conn.beginTransaction();
 
         const [convResult] = await conn.query<ResultSetHeader>(
@@ -730,7 +730,7 @@ export async function adminGetConversations(storeId: number, empId: number): Pro
         [storeId, empId, storeId, storeId, storeId, platformStore ? 0 : 1]
     );
 
-    // กันห้องร้านต่อร้านซ้ำจากข้อมูลเดิม: 1 คู่ร้านควรแสดงแค่ 1 ห้องล่าสุด
+    // Evita salas tienda a tienda duplicadas de datos antiguos: cada par de tiendas debe mostrar solo 1 sala, la más reciente (กันห้องร้านต่อร้านซ้ำจากข้อมูลเดิม: 1 คู่ร้านควรแสดงแค่ 1 ห้องล่าสุด)
     const seenStoreTargets = new Set<number>();
     const supportRows = supportRowsRaw.filter(row => {
         const otherStoreId = Number(row.st_id) === Number(storeId)
@@ -745,7 +745,7 @@ export async function adminGetConversations(storeId: number, empId: number): Pro
         supportRows.map(row => Number(row.st_id) === Number(storeId) ? Number(row.source_store_id) : Number(row.target_store_id))
     );
 
-    // ร้านค้า (ผู้ขาย) ติดต่อได้แค่เจ้าของเว็บไซต์เท่านั้น — ฝั่ง platform เองไม่ต้องเห็นรายชื่อร้านค้าทั้งหมดเป็น contact ให้เลือกทัก
+    // Las tiendas (vendedores) solo pueden contactar al dueño del sitio — el lado de la plataforma no necesita ver la lista completa de tiendas como contactos para elegir (ร้านค้า (ผู้ขาย) ติดต่อได้แค่เจ้าของเว็บไซต์เท่านั้น — ฝั่ง platform เองไม่ต้องเห็นรายชื่อร้านค้าทั้งหมดเป็น contact ให้เลือกทัก)
     const [contactRows] = platformStore
         ? [[] as (RowDataPacket & {
             st_id: number;
@@ -842,11 +842,11 @@ export async function adminGetMessages(conv_id: number, storeId: number): Promis
 }
 
 export async function adminMarkAsRead(conv_id: number, storeId: number, empId: number): Promise<void> {
-    // mark read เป็นงานเสริมของ UI ถ้าห้องไม่ใช่สิทธิ์ของร้านนี้ให้ no-op
-    // เพื่อไม่ให้หน้าแชทเด้ง error ทั้งที่การอ่าน/ส่งข้อความยังถูกคุมสิทธิ์ด้วย get/send อยู่
+    // Marcar como leído es una función secundaria de la UI; si la sala no pertenece a esta tienda, no hacer nada (mark read เป็นงานเสริมของ UI ถ้าห้องไม่ใช่สิทธิ์ของร้านนี้ให้ no-op)
+    // para que la pantalla de chat no muestre un error, ya que el acceso de lectura/envío sigue controlado por get/send (เพื่อไม่ให้หน้าแชทเด้ง error ทั้งที่การอ่าน/ส่งข้อความยังถูกคุมสิทธิ์ด้วย get/send อยู่)
     if (!await canAdminAccessConversation(conv_id, storeId)) return;
 
-    // หา msg_id ล่าสุดในห้องนี้
+    // Busca el msg_id más reciente en esta sala (หา msg_id ล่าสุดในห้องนี้)
     const [lastMsg] = await pool.query<(RowDataPacket & { max_id: number | null })[]>(
         `SELECT MAX(msg_id) AS max_id FROM messages WHERE conv_id = ? AND deleted_at IS NULL`,
         [conv_id]
@@ -854,7 +854,7 @@ export async function adminMarkAsRead(conv_id: number, storeId: number, empId: n
     const lastMsgId = lastMsg[0]?.max_id ?? 0;
     if (!lastMsgId) return;
 
-    // upsert แถว admin ใน Conversation_participants
+    // Upsert de la fila del admin en Conversation_participants (upsert แถว admin ใน Conversation_participants)
     const [existing] = await pool.query<RowDataPacket[]>(
         `SELECT cp_id FROM Conversation_participants
          WHERE conv_id = ? AND actor_type = 'employee' AND actor_id = ?`,
@@ -949,7 +949,7 @@ export async function adminSendMessage(
         `SELECT actor_id FROM Conversation_participants WHERE conv_id = ? AND actor_type = 'store'`,
         [conv_id]
     );
-    // ดึง buyer ของห้องนี้ เพื่อ emit ไปที่ USER room ให้ storefront อัปเดต unread badge ได้ทันที
+    // Obtiene el buyer de esta sala para emitir al USER room y que el storefront actualice el badge de no leídos al instante (ดึง buyer ของห้องนี้ เพื่อ emit ไปที่ USER room ให้ storefront อัปเดต unread badge ได้ทันที)
     const [participantUsers] = await pool.query<(RowDataPacket & { actor_id: number })[]>(
         `SELECT actor_id FROM Conversation_participants WHERE conv_id = ? AND actor_type = 'user'`,
         [conv_id]
@@ -975,7 +975,7 @@ export async function adminSendMessage(
         participantStores.forEach(store => {
             io.to(`STORE_${store.actor_id}`).emit('chat:new_message', { conv_id, message });
         });
-        // แจ้ง buyer ผ่าน USER room — storefront ใช้ room นี้อัปเดต unread badge แบบ real-time
+        // Notifica al buyer mediante el USER room — el storefront usa esta room para actualizar el badge de no leídos en tiempo real (แจ้ง buyer ผ่าน USER room — storefront ใช้ room นี้อัปเดต unread badge แบบ real-time)
         participantUsers.forEach(user => {
             io.to(`USER_${user.actor_id}`).emit('chat:new_message', { conv_id, message });
         });

@@ -20,7 +20,7 @@ const MEXICO_COLUMNS: Record<string, string> = {
     formatted_address: "VARCHAR(500) NULL AFTER longitude",
 };
 
-// เตรียม schema แบบ idempotent เพื่อให้ API รุ่นใหม่ใช้งานกับฐานข้อมูลเดิมได้ทันที
+// Prepara el schema de forma idempotente para que la nueva versión de la API pueda usar la base de datos existente de inmediato (เตรียม schema แบบ idempotent เพื่อให้ API รุ่นใหม่ใช้งานกับฐานข้อมูลเดิมได้ทันที)
 export function ensureLocationMexicoSchema(): Promise<void> {
     locationMexicoSchemaReady ??= (async () => {
         const [columns] = await pool.query<ColumnRow[]>(

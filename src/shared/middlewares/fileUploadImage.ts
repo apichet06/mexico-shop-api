@@ -49,7 +49,7 @@ export async function fileUploadImage(
 
 
 /**
- * ลบไฟล์ temp อย่างปลอดภัย
+ * Elimina archivos temporales de forma segura (ลบไฟล์ temp อย่างปลอดภัย)
  */
 export function safeUnlink(filePath: string) {
     try {
@@ -62,14 +62,14 @@ export function safeUnlink(filePath: string) {
 }
 
 /**
- * ลบไฟล์ temp หลายไฟล์
+ * Elimina varios archivos temporales (ลบไฟล์ temp หลายไฟล์)
  */
 export function cleanupTempFiles(files: Express.Multer.File[]) {
     files.forEach((file) => safeUnlink(file.path));
 }
 
 /**
- * ลบไฟล์ temp จาก req.files (multer fields)
+ * Elimina archivos temporales desde req.files (multer fields) (ลบไฟล์ temp จาก req.files (multer fields))
  */
 export function cleanupRequestFiles(
     files: { [fieldname: string]: Express.Multer.File[] } | undefined

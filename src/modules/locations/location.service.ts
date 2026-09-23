@@ -63,7 +63,7 @@ export async function CreateLocation(input: CreateLocationInput): Promise<number
         await conn.beginTransaction();
         const stId = Number(input.st_id);
         if (!stId) {
-            throw new ApiError(400, "รหัสร้านไม่ถูกต้อง");
+            throw new ApiError(400, "ID de tienda no válido."); // "รหัสร้านไม่ถูกต้อง"
         }
         const [storeRows] = await conn.query<RowDataPacket[]>(
             `SELECT st_id FROM Store WHERE st_id = ? LIMIT 1`,
@@ -78,7 +78,7 @@ export async function CreateLocation(input: CreateLocationInput): Promise<number
         );
         const locationCount = Number(locationRows[0]?.total ?? 0);
         if (locationCount >= MAX_SELLER_STORE_LOCATIONS) {
-            throw new ApiError(400, `เพิ่มคลังสินค้า/สาขาได้สูงสุด ${MAX_SELLER_STORE_LOCATIONS} แห่ง`);
+            throw new ApiError(400, `Solo se pueden agregar hasta ${MAX_SELLER_STORE_LOCATIONS} almacenes o sucursales.`); // "เพิ่มคลังสินค้า/สาขาได้สูงสุด ${MAX_SELLER_STORE_LOCATIONS} แห่ง"
         }
 
         const defaultValue = input.is_default as unknown;
@@ -160,13 +160,13 @@ export async function UpdateLocation(loc_id: number, input: Partial<UpdateLocati
         const nextIsDefault = defaultValue === true || defaultValue === 1 || defaultValue === "1";
 
         if (nextIsDefault) {
-            // หา old default ก่อน reset
+            // Buscar el almacén default anterior antes de reiniciarlo (หา old default ก่อน reset)
             const [oldDefaultRows] = await conn.query<RowDataPacket[]>(
                 "SELECT loc_id FROM Locations WHERE st_id = ? AND is_default = 1 AND loc_id != ?",
                 [input.st_id, loc_id]
             );
 
-            // นับจำนวนคลังย่อยที่มีอยู่ (ไม่นับตัวที่กำลัง promote)
+            // Contar la cantidad de sub-almacenes existentes (sin contar el que se está promoviendo) (นับจำนวนคลังย่อยที่มีอยู่ (ไม่นับตัวที่กำลัง promote))
             const [countRows] = await conn.query<RowDataPacket[]>(
                 "SELECT COUNT(*) as count FROM Locations WHERE st_id = ? AND is_default = 0 AND loc_id != ?",
                 [input.st_id, loc_id]
@@ -175,7 +175,7 @@ export async function UpdateLocation(loc_id: number, input: Partial<UpdateLocati
 
             await conn.query("UPDATE Locations SET is_default = 0 WHERE st_id = ?", [input.st_id]);
 
-            // เปลี่ยนคลังหลักเดิมเป็นคลังย่อยตามลำดับใหม่
+            // Cambiar el antiguo almacén principal a almacén secundario según el nuevo orden (เปลี่ยนคลังหลักเดิมเป็นคลังย่อยตามลำดับใหม่)
             if (oldDefaultRows.length > 0) {
                 await conn.query(
                     "UPDATE Locations SET loc_name = ? WHERE loc_id = ?",
@@ -252,25 +252,25 @@ export async function DeleteLocation(loc_id: number): Promise<void> {
 
     try {
         await conn.beginTransaction();
-        // 1) ดึงข้อมูล location ที่จะลบก่อน
+        // 1) Obtener primero los datos de la ubicación que se eliminará (ดึงข้อมูล location ที่จะลบก่อน)
         const [rows] = await conn.query<LocationRow[]>(`SELECT loc_id, st_id, is_default FROM Locations WHERE loc_id = ?`, [loc_id]);
         if (rows.length === 0) {
             throw new ApiError(404, CommonMessages.notFound);
         }
 
         const target = rows[0]!;
-        // 2) ลบ location
+        // 2) Eliminar la ubicación (ลบ location)
         const [result] = await conn.query<ResultSetHeader>(`DELETE FROM Locations WHERE loc_id = ?`, [loc_id]);
 
         if (result.affectedRows === 0) {
             throw new ApiError(404, CommonMessages.notFound);
         }
 
-        // 3) ถ้าตัวที่ลบเป็นที่อยู่หลัก ให้หาอันใหม่ในร้านเดียวกัน
+        // 3) Si la ubicación eliminada era la principal, buscar una nueva en la misma tienda (ถ้าตัวที่ลบเป็นที่อยู่หลัก ให้หาอันใหม่ในร้านเดียวกัน)
         if (target.is_default === 1) {
             const [remaining] = await conn.query<LocationRow[]>(`SELECT loc_id FROM Locations WHERE st_id = ? ORDER BY loc_id ASC LIMIT 1`, [target.st_id]);
 
-            // 4) ถ้ายังมี location เหลืออยู่ ค่อยตั้งเป็น default
+            // 4) Si todavía queda alguna ubicación, se establece como default (ถ้ายังมี location เหลืออยู่ ค่อยตั้งเป็น default)
             if (remaining.length > 0) {
                 await conn.query(`UPDATE Locations  SET is_default = 1 WHERE loc_id = ?`, [remaining[0]!.loc_id]);
             }

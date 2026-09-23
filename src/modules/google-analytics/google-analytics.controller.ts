@@ -10,7 +10,7 @@ export const getDashboard = asyncHandler(async (req: Request, res: Response) => 
     const range = (typeof req.query.range === "string" ? req.query.range : "7d") as GoogleAnalyticsRange;
 
     if (!VALID_RANGES.has(range)) {
-        throw new ApiError(400, "range ต้องเป็น today, 7d, 30d หรือ 90d");
+        throw new ApiError(400, "range debe ser today, 7d, 30d o 90d."); // "range ต้องเป็น today, 7d, 30d หรือ 90d"
     }
 
     const dashboard = await service.getDashboard(range);

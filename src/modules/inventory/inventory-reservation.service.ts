@@ -19,9 +19,9 @@ export type InventoryReservationItem = {
 
 let reservationTableReady: Promise<void> | null = null;
 
-// เตรียมตาราง ledger สำหรับผูกการจอง stock เข้ากับ order/item
-// ทำแบบ lazy ตอนมี checkout/payment ครั้งแรก เพื่อให้ระบบเดิมรันต่อได้แม้ยังไม่มี migration แยก
-// ตารางนี้ไม่ได้แทน Inventorys.reserved_qty แต่ใช้เป็นหลักฐานว่า reserved_qty แต่ละส่วนเป็นของ order ไหน
+// Prepara la tabla ledger para vincular la reserva de stock con order/item (เตรียมตาราง ledger สำหรับผูกการจอง stock เข้ากับ order/item)
+// Se crea de forma lazy en el primer checkout/payment, para que el sistema existente siga funcionando aunque no haya una migración separada (ทำแบบ lazy ตอนมี checkout/payment ครั้งแรก เพื่อให้ระบบเดิมรันต่อได้แม้ยังไม่มี migration แยก)
+// Esta tabla no reemplaza a Inventorys.reserved_qty, sino que se usa como evidencia de a qué order pertenece cada parte del reserved_qty (ตารางนี้ไม่ได้แทน Inventorys.reserved_qty แต่ใช้เป็นหลักฐานว่า reserved_qty แต่ละส่วนเป็นของ order ไหน)
 export function ensureInventoryReservationTable(): Promise<void> {
     reservationTableReady ??= pool.query(`
         CREATE TABLE IF NOT EXISTS Order_inventory_reservations (
@@ -50,13 +50,13 @@ export function ensureInventoryReservationTable(): Promise<void> {
 function assertPositiveQty(qty: number, label: string): number {
     const amount = Number(qty);
     if (!Number.isInteger(amount) || amount <= 0) {
-        throw new ApiError(400, `${label} จำนวนสินค้าไม่ถูกต้อง`);
+        throw new ApiError(400, `${label}: la cantidad de producto no es válida.`); // `${label} จำนวนสินค้าไม่ถูกต้อง`
     }
     return amount;
 }
 
-// จอง stock ให้ order pending โดยเพิ่ม Inventorys.reserved_qty และบันทึกว่า order นี้จองจาก inv_id ไหน
-// ถ้า available_qty ไม่พอจะ throw เพื่อ rollback checkout ทั้ง transaction
+// Reserva el stock para un order pending, incrementando Inventorys.reserved_qty y registrando de qué inv_id proviene la reserva de este order (จอง stock ให้ order pending โดยเพิ่ม Inventorys.reserved_qty และบันทึกว่า order นี้จองจาก inv_id ไหน)
+// Si el available_qty no es suficiente, se lanza un throw para hacer rollback de toda la transaction del checkout (ถ้า available_qty ไม่พอจะ throw เพื่อ rollback checkout ทั้ง transaction)
 export async function reserveInventoryForOrderItems(
     conn: PoolConnection,
     items: InventoryReservationItem[]
@@ -64,7 +64,7 @@ export async function reserveInventoryForOrderItems(
     for (const item of items) {
         let need = assertPositiveQty(item.qty, item.order_no ?? `order ${item.or_id}`);
 
-        // lock stock ของ variant นี้จนจบ transaction เพื่อกันหลาย checkout แย่ง stock พร้อมกัน
+        // Bloquea el stock de esta variant hasta el final de la transaction, para evitar que varios checkouts compitan por el stock al mismo tiempo (lock stock ของ variant นี้จนจบ transaction เพื่อกันหลาย checkout แย่ง stock พร้อมกัน)
         const [rows] = await conn.query<InventoryRow[]>(
             `SELECT inv_id, pv_id, on_hand, reserved_qty
              FROM Inventorys
@@ -81,7 +81,7 @@ export async function reserveInventoryForOrderItems(
         if (availableTotal < need) {
             throw new ApiError(
                 409,
-                `สินค้า ${item.order_no ?? item.pv_id} มีจำนวนไม่พอ เหลือให้ซื้อได้ ${availableTotal} ชิ้น`
+                `El producto ${item.order_no ?? item.pv_id} no tiene suficiente cantidad disponible; solo quedan ${availableTotal} piezas disponibles para comprar.` // `สินค้า ${item.order_no ?? item.pv_id} มีจำนวนไม่พอ เหลือให้ซื้อได้ ${availableTotal} ชิ้น`
             );
         }
 
@@ -111,8 +111,8 @@ export async function reserveInventoryForOrderItems(
     }
 }
 
-// คืน stock ที่เคยจองไว้ให้ order กลับมาเป็น available_qty
-// ใช้ตอน order ถูกยกเลิกหรือหมดเวลาชำระเงิน โดยไม่แตะ on_hand เพราะของยังไม่เคยออกจากคลัง
+// Devuelve el stock que había sido reservado para el order, regresándolo al available_qty (คืน stock ที่เคยจองไว้ให้ order กลับมาเป็น available_qty)
+// Se usa cuando el order se cancela o expira el tiempo de pago, sin tocar on_hand porque el producto nunca salió del almacén (ใช้ตอน order ถูกยกเลิกหรือหมดเวลาชำระเงิน โดยไม่แตะ on_hand เพราะของยังไม่เคยออกจากคลัง)
 export async function releaseReservationsForOrders(
     conn: PoolConnection,
     orderIds: number[]
@@ -137,7 +137,7 @@ export async function releaseReservationsForOrders(
         const releaseQty = Number(reservation.qty_reserved) - Number(reservation.qty_consumed);
         if (releaseQty <= 0) continue;
 
-        // คืนสิทธิ์การขายกลับเข้า available_qty โดยลด reserved_qty เฉพาะส่วนของ order นี้
+        // Devuelve el derecho de venta al available_qty, reduciendo reserved_qty solo en la parte correspondiente a este order (คืนสิทธิ์การขายกลับเข้า available_qty โดยลด reserved_qty เฉพาะส่วนของ order นี้)
         await conn.query(
             `UPDATE Inventorys
              SET reserved_qty = GREATEST(reserved_qty - ?, 0)
@@ -154,8 +154,8 @@ export async function releaseReservationsForOrders(
     );
 }
 
-// แปลง stock ที่จองไว้เป็นยอดขายจริง
-// ใช้หลัง payment paid เท่านั้น: ลด on_hand และลด reserved_qty ของ order นั้นออกจาก ledger
+// Convierte el stock reservado en una venta real (แปลง stock ที่จองไว้เป็นยอดขายจริง)
+// Se usa solo después de que payment está paid: reduce on_hand y reduce el reserved_qty de ese order en el ledger (ใช้หลัง payment paid เท่านั้น: ลด on_hand และลด reserved_qty ของ order นั้นออกจาก ledger)
 export async function consumeReservationsForOrders(
     conn: PoolConnection,
     orderIds: number[]
@@ -180,7 +180,7 @@ export async function consumeReservationsForOrders(
         const consumeQty = Number(reservation.qty_reserved) - Number(reservation.qty_consumed);
         if (consumeQty <= 0) continue;
 
-        // จ่ายสำเร็จแล้วจึงตัด stock จริง: ลดทั้ง on_hand และ reserved_qty พร้อมกัน
+        // El pago ya se completó con éxito, así que se descuenta el stock real: se reducen on_hand y reserved_qty al mismo tiempo (จ่ายสำเร็จแล้วจึงตัด stock จริง: ลดทั้ง on_hand และ reserved_qty พร้อมกัน)
         const [result] = await conn.query<ResultSetHeader>(
             `UPDATE Inventorys
              SET on_hand = on_hand - ?,
@@ -192,7 +192,7 @@ export async function consumeReservationsForOrders(
         );
 
         if (result.affectedRows === 0) {
-            throw new ApiError(409, "จำนวนสินค้าในคลังไม่พอสำหรับตัดยอดหลังชำระเงิน");
+            throw new ApiError(409, "No hay suficiente cantidad de producto en el inventario para descontar el stock después del pago."); // "จำนวนสินค้าในคลังไม่พอสำหรับตัดยอดหลังชำระเงิน"
         }
 
         await conn.query(
@@ -207,8 +207,8 @@ export async function consumeReservationsForOrders(
     }
 }
 
-// คืน stock จริงกลับเข้าคลังหลัง order ที่จ่ายเงินแล้วได้รับ refund สำเร็จ
-// ใช้ consumed ledger เป็นหลักเพื่อให้คืนได้ครั้งเดียวและไม่เพิ่ม stock ซ้ำหาก endpoint ถูกเรียกซ้ำ
+// Devuelve el stock real al almacén después de que un order ya pagado recibe un refund exitoso (คืน stock จริงกลับเข้าคลังหลัง order ที่จ่ายเงินแล้วได้รับ refund สำเร็จ)
+// Se basa principalmente en el consumed ledger, para que la devolución ocurra solo una vez y no se duplique el stock si el endpoint se llama repetidamente (ใช้ consumed ledger เป็นหลักเพื่อให้คืนได้ครั้งเดียวและไม่เพิ่ม stock ซ้ำหาก endpoint ถูกเรียกซ้ำ)
 export async function restockConsumedReservationsForOrders(
     conn: PoolConnection,
     orderIds: number[]
@@ -250,8 +250,8 @@ export async function restockConsumedReservationsForOrders(
 
 let reservationRestockColumnReady: Promise<void> | null = null;
 
-// เตรียม column qty_restocked ไว้แยกนับว่า reservation แต่ละแถวถูกคืนสต็อกไปแล้วเท่าไหร่
-// จำเป็นสำหรับการคืนสินค้าแค่บางจำนวนใน oi_id เดียวกัน (เช่น ซื้อ 2 คืนแค่ 1)
+// Prepara la column qty_restocked para contar por separado cuánto stock ya se devolvió de cada fila de reservation (เตรียม column qty_restocked ไว้แยกนับว่า reservation แต่ละแถวถูกคืนสต็อกไปแล้วเท่าไหร่)
+// Es necesaria para devoluciones parciales dentro del mismo oi_id (por ejemplo, comprar 2 y devolver solo 1) (จำเป็นสำหรับการคืนสินค้าแค่บางจำนวนใน oi_id เดียวกัน (เช่น ซื้อ 2 คืนแค่ 1))
 export function ensureReservationRestockColumn(): Promise<void> {
     reservationRestockColumnReady ??= pool.query<(RowDataPacket & { column_name: string })[]>(
         `SELECT COLUMN_NAME AS column_name
@@ -272,8 +272,8 @@ export function ensureReservationRestockColumn(): Promise<void> {
     return reservationRestockColumnReady;
 }
 
-// เหมือน restockConsumedReservationsForOrders แต่คืนสต็อกตามจำนวนที่ระบุต่อ oi_id (ไม่ใช่ทั้งชิ้น) ใช้กับการคืนสินค้าบางรายการ/บางจำนวน
-// itemQtyMap: oi_id -> จำนวนที่ต้องการคืนสต็อก อาจกระจายอยู่หลาย reservation row (หลาย lot สต็อก) ต่อ oi_id เดียว จึงต้องไล่คืนทีละแถวจนครบจำนวน
+// Igual que restockConsumedReservationsForOrders, pero devuelve el stock según la cantidad indicada por oi_id (no todo); se usa para devoluciones parciales de algunos items/cantidades (เหมือน restockConsumedReservationsForOrders แต่คืนสต็อกตามจำนวนที่ระบุต่อ oi_id (ไม่ใช่ทั้งชิ้น) ใช้กับการคืนสินค้าบางรายการ/บางจำนวน)
+// itemQtyMap: oi_id -> la cantidad de stock que se desea devolver; puede estar repartida en varias filas de reservation (varios lotes de stock) para el mismo oi_id, por lo que hay que recorrer fila por fila hasta completar la cantidad (itemQtyMap: oi_id -> จำนวนที่ต้องการคืนสต็อก อาจกระจายอยู่หลาย reservation row (หลาย lot สต็อก) ต่อ oi_id เดียว จึงต้องไล่คืนทีละแถวจนครบจำนวน)
 export async function restockConsumedReservationsForItems(
     conn: PoolConnection,
     or_id: number,

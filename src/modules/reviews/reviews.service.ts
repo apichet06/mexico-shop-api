@@ -5,7 +5,7 @@ import { fileUploadImage } from "../../shared/middlewares/fileUploadImage.js"
 import { setOrdersStatus } from "../orders/order-status.service.js"
 import type { CreateReviewInput, ReviewDTO, ReviewSummary } from "./reviews.type.js"
 
-// ดึงรีวิวทั้งหมดของ pv_id พร้อม pagination
+// Obtiene todas las reseñas de un pv_id con paginación (ดึงรีวิวทั้งหมดของ pv_id พร้อม pagination)
 export async function getReviews(
     pv_id: number,
     page: number,
@@ -13,7 +13,7 @@ export async function getReviews(
 ): Promise<{ reviews: ReviewDTO[]; summary: ReviewSummary; total: number }> {
     const offset = (page - 1) * limit
 
-    // ดึงรีวิวพร้อม username, avatar และรวมรูปภาพด้วย GROUP_CONCAT
+    // Obtiene las reseñas junto con username, avatar, y agrupa las imágenes con GROUP_CONCAT (ดึงรีวิวพร้อม username, avatar และรวมรูปภาพด้วย GROUP_CONCAT)
     const [rows] = await pool.query<(RowDataPacket & {
         ed_id: number; pv_id: number; oi_id: number; u_id: number
         u_username: string; u_avatar: string | null
@@ -35,7 +35,7 @@ export async function getReviews(
         [pv_id, limit, offset]
     )
 
-    // นับยอดรวมและคำนวณคะแนนเฉลี่ย
+    // Cuenta el total y calcula el promedio de calificación (นับยอดรวมและคำนวณคะแนนเฉลี่ย)
     const [summaryRows] = await pool.query<(RowDataPacket & ReviewSummary)[]>(
         `SELECT
             COUNT(*) AS total,
@@ -50,22 +50,22 @@ export async function getReviews(
 
     const reviews: ReviewDTO[] = rows.map(r => ({
         ...r,
-        // แปลง GROUP_CONCAT string เป็น array (กรองค่าว่างออก)
+        // Convierte el string de GROUP_CONCAT en un array (filtra los valores vacíos) (แปลง GROUP_CONCAT string เป็น array (กรองค่าว่างออก))
         images: r.images ? r.images.split(",").filter(Boolean) : [],
     }))
 
     return { reviews, summary, total: summary.total }
 }
 
-// สร้างรีวิวใหม่ (ต้องซื้อสินค้านั้นจริงๆ)
+// Crea una nueva reseña (debe haber comprado ese producto realmente) (สร้างรีวิวใหม่ (ต้องซื้อสินค้านั้นจริงๆ))
 export async function createReview(input: CreateReviewInput): Promise<void> {
     const conn = await pool.getConnection()
     try {
         await conn.beginTransaction()
 
-        // ตรวจว่า oi_id นั้นเป็นของ user นี้และมี pv_id ตรงกัน
-        // เช็ค 3 ทางเพราะ delivered อาจมาจาก: legacy status, shipment_status จากผู้ให้บริการขนส่ง, หรือ s_code ใหม่
-        // lock order item เพื่อให้ request รีวิว oi_id เดียวกันทำงานทีละรายการ
+        // Verifica que ese oi_id pertenezca a este user y que el pv_id coincida (ตรวจว่า oi_id นั้นเป็นของ user นี้และมี pv_id ตรงกัน)
+        // Revisa 3 vías porque "delivered" puede venir de: el status legacy, el shipment_status del proveedor de envíos, o el nuevo s_code (เช็ค 3 ทางเพราะ delivered อาจมาจาก: legacy status, shipment_status จากผู้ให้บริการขนส่ง, หรือ s_code ใหม่)
+        // Bloquea el order item para que las solicitudes de reseña del mismo oi_id se procesen una por una (lock order item เพื่อให้ request รีวิว oi_id เดียวกันทำงานทีละรายการ)
         const [orderCheck] = await conn.query<RowDataPacket[]>(
             `SELECT oi.oi_id
          FROM Order_items oi
@@ -82,15 +82,15 @@ export async function createReview(input: CreateReviewInput): Promise<void> {
             [input.oi_id, input.pv_id, input.u_id]
         )
 
-        if (!orderCheck[0]) throw new ApiError(403, "ต้องรับสินค้าเรียบร้อยก่อนจึงจะรีวิวได้")
+        if (!orderCheck[0]) throw new ApiError(403, "Debes haber recibido el producto antes de poder reseñarlo.") // "ต้องรับสินค้าเรียบร้อยก่อนจึงจะรีวิวได้"
 
-        // ป้องกันรีวิวซ้ำในรายการสั่งซื้อเดิม
+        // Evita reseñas duplicadas en la misma orden (ป้องกันรีวิวซ้ำในรายการสั่งซื้อเดิม)
         const [dupCheck] = await conn.query<RowDataPacket[]>(
             "SELECT ed_id FROM Estimate_delivery WHERE oi_id = ? LIMIT 1",
             [input.oi_id]
         )
 
-        if (dupCheck[0]) throw new ApiError(409, "คุณรีวิวรายการนี้ไปแล้ว")
+        if (dupCheck[0]) throw new ApiError(409, "Ya reseñaste este artículo.") // "คุณรีวิวรายการนี้ไปแล้ว"
 
         const [result] = await conn.query<ResultSetHeader>(
             "INSERT INTO Estimate_delivery SET ?",
@@ -107,7 +107,7 @@ export async function createReview(input: CreateReviewInput): Promise<void> {
 
         const ed_id = result.insertId
 
-        // อัปโหลดรูปและบันทึก path ลง Estimate_delivery_image
+        // Sube las imágenes y guarda la ruta en Estimate_delivery_image (อัปโหลดรูปและบันทึก path ลง Estimate_delivery_image)
         for (let i = 0; i < input.imageFiles.length; i++) {
             const file = input.imageFiles[i]!
             const url = await fileUploadImage(file, `review_${ed_id}_${i}`, "reviews")
@@ -116,8 +116,8 @@ export async function createReview(input: CreateReviewInput): Promise<void> {
 
         await conn.commit()
 
-        // หลัง commit — เช็คว่า order นี้รีวิวครบทุก item แล้วหรือยัง
-        // ถ้าครบให้เปลี่ยนสถานะ order เป็น REVIEWED
+        // Después del commit: revisa si esta order ya tiene reseñas en todos sus items (หลัง commit — เช็คว่า order นี้รีวิวครบทุก item แล้วหรือยัง)
+        // Si están completas, cambia el status de la order a REVIEWED (ถ้าครบให้เปลี่ยนสถานะ order เป็น REVIEWED)
         const [orRows] = await conn.query<(RowDataPacket & { or_id: number })[]>(
             "SELECT or_id FROM Order_items WHERE oi_id = ? LIMIT 1",
             [input.oi_id]
@@ -137,14 +137,14 @@ export async function createReview(input: CreateReviewInput): Promise<void> {
             )
             const progress = reviewProgress[0]
             if (progress && progress.total_items > 0 && progress.total_items === progress.reviewed_items) {
-                // ทุก item รีวิวครบ — update order เป็น REVIEWED
+                // Todos los items ya tienen reseña: actualiza la order a REVIEWED (ทุก item รีวิวครบ — update order เป็น REVIEWED)
                 await conn.beginTransaction()
                 try {
                     await setOrdersStatus(conn, [or_id], "REVIEWED")
                     await conn.commit()
                 } catch {
                     await conn.rollback()
-                    // ไม่ throw — review บันทึกสำเร็จแล้ว แค่ status อัพไม่ได้
+                    // No lanza error: la reseña ya se guardó correctamente, solo falló la actualización del status (ไม่ throw — review บันทึกสำเร็จแล้ว แค่ status อัพไม่ได้)
                 }
             }
         }
@@ -156,8 +156,8 @@ export async function createReview(input: CreateReviewInput): Promise<void> {
     }
 }
 
-// ตรวจว่า user นี้มีสิทธิ์รีวิว pv_id นี้มั้ย
-// คืน list oi_id ที่ยังไม่เคยรีวิว
+// Verifica si este user tiene permiso para reseñar este pv_id (ตรวจว่า user นี้มีสิทธิ์รีวิว pv_id นี้มั้ย)
+// Devuelve la lista de oi_id que aún no se han reseñado (คืน list oi_id ที่ยังไม่เคยรีวิว)
 export async function getReviewableItems(u_id: number, pv_id: number) {
     const [rows] = await pool.query<(RowDataPacket & { oi_id: number })[]>(
         `SELECT oi.oi_id

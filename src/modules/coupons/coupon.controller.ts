@@ -29,7 +29,7 @@ function normalizeDiscountType(value: unknown): CouponDiscountType {
     return value;
 }
 
-// ตรวจ payload เบื้องต้นที่ controller ก่อนส่งเข้า service ซึ่งจะจัดการ transaction/DB ต่อ
+// Valida el payload de forma básica en el controller antes de enviarlo al service, que se encargará de la transacción/BD (ตรวจ payload เบื้องต้นที่ controller ก่อนส่งเข้า service ซึ่งจะจัดการ transaction/DB ต่อ)
 function validateCouponBody(body: Record<string, unknown>, partial = false): void {
     const requiredFields = [
         "co_code",
@@ -101,7 +101,7 @@ export const create = asyncHandler(async (req, res) => {
     const body = req.body as Record<string, unknown>;
     validateCouponBody(body);
 
-    // st_id มาจาก token พนักงานร้านค้า ไม่รับจาก body เพื่อกันสร้างคูปองข้ามร้าน
+    // st_id viene del token del empleado de la tienda; no se recibe del body, para evitar crear cupones entre tiendas distintas (st_id มาจาก token พนักงานร้านค้า ไม่รับจาก body เพื่อกันสร้างคูปองข้ามร้าน)
     const coId = await service.createCoupon({
         co_code: String(body.co_code).trim(),
         discount_type: normalizeDiscountType(body.discount_type),
@@ -130,7 +130,7 @@ export const update = asyncHandler(async (req, res) => {
     const body = req.body as Record<string, unknown>;
     validateCouponBody(body, true);
 
-    // ส่งเฉพาะ field ที่มีมาใน body เพื่อรองรับ partial update
+    // Envía solo los fields que llegaron en el body, para soportar la actualización parcial (ส่งเฉพาะ field ที่มีมาใน body เพื่อรองรับ partial update)
     await service.updateCoupon(coId, {
         ...(body.co_code !== undefined ? { co_code: String(body.co_code).trim() } : {}),
         ...(body.discount_type !== undefined ? { discount_type: normalizeDiscountType(body.discount_type) } : {}),
@@ -183,7 +183,7 @@ export const validate = asyncHandler(async (req, res) => {
 
     if (!co_code) throw new ApiError(400, "Se requiere especificar co_code.");
 
-    // validate endpoint ใช้ให้หน้าตะกร้า preview ยอดลด ก่อนกด checkout จริง
+    // El endpoint validate se usa para que la página del carrito muestre una vista previa del descuento antes de hacer el checkout real (validate endpoint ใช้ให้หน้าตะกร้า preview ยอดลด ก่อนกด checkout จริง)
     const data = await service.validateCoupon({
         u_id: uId,
         co_code: String(co_code).trim(),

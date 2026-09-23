@@ -71,7 +71,7 @@ export const update = asyncHandler(async (req, res) => {
             try {
                 fs.unlinkSync(fullOldImagePath);
             } catch (err: any) {
-                console.log("ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):", err.message);
+                console.log("No se pudo eliminar la imagen anterior (puede que el archivo no exista):", err.message); // "ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):"
             }
         }
 
@@ -107,7 +107,7 @@ export const remove = asyncHandler(async (req, res) => {
         try {
             fs.unlinkSync(fullOldImagePath);
         } catch (err: any) {
-            console.log("ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):", err.message);
+            console.log("No se pudo eliminar la imagen anterior (puede que el archivo no exista):", err.message); // "ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):"
         }
     }
 

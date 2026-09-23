@@ -137,7 +137,7 @@ export async function CreateNotification(input: NotificationInput): Promise<void
     }
 }
 
-/** ส่งแจ้งเตือนให้เฉพาะ platform store (เจ้าของเว็บไซต์) โดยไม่แจ้ง store ต้นเรื่อง */
+/** Envía la notificación solo a la platform store (dueña del sitio), sin notificar a la store de origen (ส่งแจ้งเตือนให้เฉพาะ platform store (เจ้าของเว็บไซต์) โดยไม่แจ้ง store ต้นเรื่อง) */
 export async function NotifyPlatformStores(input: PlatformNotificationInput): Promise<void> {
     const conn = await pool.getConnection();
     const notifications: Record<string, unknown>[] = [];

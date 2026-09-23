@@ -20,7 +20,7 @@ const VALID_RANGES = new Set<WebsiteAnalyticsRange>(["today", "7d", "30d", "90d"
 
 function stringField(value: unknown, field: string, maxLength: number): string {
     if (typeof value !== "string" || !value.trim()) {
-        throw new ApiError(400, `${field} ไม่ถูกต้อง`);
+        throw new ApiError(400, `${field} no es válido.`); // "${field} ไม่ถูกต้อง"
     }
     return value.trim().slice(0, maxLength);
 }
@@ -57,7 +57,7 @@ function nullableNumberField(value: unknown): number | null {
 function nullableDateField(value: unknown, field: string): string | undefined {
     if (value == null || value === "") return undefined;
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        throw new ApiError(400, `${field} ต้องอยู่ในรูปแบบ YYYY-MM-DD`);
+        throw new ApiError(400, `${field} debe tener el formato YYYY-MM-DD.`); // "${field} ต้องอยู่ในรูปแบบ YYYY-MM-DD"
     }
     return value;
 }
@@ -73,10 +73,10 @@ function parseEventInput(body: Record<string, unknown>): WebsiteAnalyticsEventIn
     const eventName = stringField(body.event_name, "event_name", 64) as WebsiteAnalyticsEventName;
 
     if (!VALID_WEBSITE_KEYS.has(websiteKey)) {
-        throw new ApiError(400, "website_key ต้องเป็น arcana, deadstock หรือ combined");
+        throw new ApiError(400, "website_key debe ser arcana, deadstock o combined."); // "website_key ต้องเป็น arcana, deadstock หรือ combined"
     }
     if (!VALID_EVENT_NAMES.has(eventName)) {
-        throw new ApiError(400, "event_name ไม่อยู่ในรายการที่รองรับ");
+        throw new ApiError(400, "event_name no está en la lista de valores permitidos."); // "event_name ไม่อยู่ในรายการที่รองรับ"
     }
 
     return {
@@ -106,7 +106,7 @@ export const recordEvent = asyncHandler(async (req: Request, res: Response) => {
         userAgent: req.headers["user-agent"] ?? null,
     });
 
-    // 204 ทำให้ frontend ยิงแบบ fire-and-forget ได้ ไม่ต้อง parse response body
+    // El 204 permite que el frontend lo envíe como fire-and-forget, sin necesidad de parsear el cuerpo de la respuesta (204 ทำให้ frontend ยิงแบบ fire-and-forget ได้ ไม่ต้อง parse response body)
     res.status(204).send();
 });
 
@@ -117,16 +117,16 @@ export const getAdminReport = asyncHandler(async (req: Request, res: Response) =
     const endDate = nullableDateField(req.query.end_date, "end_date");
 
     if (!VALID_WEBSITE_KEYS.has(websiteKey)) {
-        throw new ApiError(400, "website_key ต้องเป็น arcana, deadstock หรือ combined");
+        throw new ApiError(400, "website_key debe ser arcana, deadstock o combined."); // "website_key ต้องเป็น arcana, deadstock หรือ combined"
     }
     if (!VALID_RANGES.has(range)) {
-        throw new ApiError(400, "range ต้องเป็น today, 7d, 30d หรือ 90d");
+        throw new ApiError(400, "range debe ser today, 7d, 30d o 90d."); // "range ต้องเป็น today, 7d, 30d หรือ 90d"
     }
     if (startDate && endDate && startDate > endDate) {
-        throw new ApiError(400, "start_date ต้องไม่มากกว่า end_date");
+        throw new ApiError(400, "start_date no debe ser mayor que end_date."); // "start_date ต้องไม่มากกว่า end_date"
     }
     if (startDate && endDate && getDateDiffDays(startDate, endDate) > 366) {
-        throw new ApiError(400, "เลือกช่วงวันที่ได้ไม่เกิน 366 วัน");
+        throw new ApiError(400, "El rango de fechas seleccionado no puede superar los 366 días."); // "เลือกช่วงวันที่ได้ไม่เกิน 366 วัน"
     }
 
     const report = await service.getAdminReport({

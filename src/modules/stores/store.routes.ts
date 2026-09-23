@@ -5,9 +5,9 @@ import { Auth } from "../../shared/middlewares/auth.js";
 
 export const storeRouter = Router();
 
-// ===== Multer config: ใช้ memoryStorage =====
+// ===== Multer config: usa memoryStorage ===== (ใช้ memoryStorage)
 const upload = multer({
-  storage: multer.memoryStorage(), //  เก็บใน RAM ก่อน
+  storage: multer.memoryStorage(), // Se guarda primero en RAM (เก็บใน RAM ก่อน)
   limits: {
     fileSize: 5 * 1024 * 1024,
   },

@@ -7,11 +7,11 @@ export const productRouter = Router();
 
 const upload = multer({
     dest: "public/uploads/", limits: {
-        fieldSize: 10 * 1024 * 1024, // ต่อ 1 field text
-        fileSize: 5 * 1024 * 1024,   // ต่อ 1 file
-        fields: 50,                  // จำนวน field text
-        files: 10,                   // จำนวนไฟล์
-        parts: 60,                   // รวมทุก part
+        fieldSize: 10 * 1024 * 1024, // por 1 field de texto (ต่อ 1 field text)
+        fileSize: 5 * 1024 * 1024,   // por 1 archivo (ต่อ 1 file)
+        fields: 50,                  // cantidad de fields de texto (จำนวน field text)
+        files: 10,                   // cantidad de archivos (จำนวนไฟล์)
+        parts: 60,                   // total de todas las partes (รวมทุก part)
     },
 });
 

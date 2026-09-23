@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { isLocalUploadPath } from "../isBase64Image.js";
-// 3) แปลง URL เป็น file path แล้วลบ
+// 3) Convierte la URL en una ruta de archivo y la elimina (แปลง URL เป็น file path แล้วลบ)
 export function deleteImageFiles(imageUrls: string[]) {
     for (const url of imageUrls) {
         try {

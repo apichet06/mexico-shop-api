@@ -16,26 +16,26 @@ const FIELD_LIMITS = {
 function parseMexicoLocation(body: Record<string, unknown>): CreateLocationInput {
     const requiredText = (field: keyof typeof FIELD_LIMITS): string => {
         const value = body[field];
-        if (typeof value !== "string" || !value.trim()) throw new ApiError(400, `กรุณาระบุ ${field}`);
+        if (typeof value !== "string" || !value.trim()) throw new ApiError(400, `Especifica el campo ${field}.`); // "กรุณาระบุ ${field}"
         if (value.length > FIELD_LIMITS[field]) {
-            throw new ApiError(400, `${field} ต้องไม่เกิน ${FIELD_LIMITS[field]} ตัวอักษร`);
+            throw new ApiError(400, `${field} no debe superar ${FIELD_LIMITS[field]} caracteres.`); // "${field} ต้องไม่เกิน ${FIELD_LIMITS[field]} ตัวอักษร"
         }
         return value.trim();
     };
 
     const st_id = Number(body.st_id);
-    if (!Number.isInteger(st_id) || st_id <= 0) throw new ApiError(400, "รหัสร้านไม่ถูกต้อง");
+    if (!Number.isInteger(st_id) || st_id <= 0) throw new ApiError(400, "ID de tienda no válido."); // "รหัสร้านไม่ถูกต้อง"
 
     if (body.country_code !== "MX") {
         const Provinces_id = Number(body.Provinces_id);
         const Districts_id = Number(body.Districts_id);
         const Subdistricts_id = Number(body.Subdistricts_id);
         if (![Provinces_id, Districts_id, Subdistricts_id].every((value) => Number.isInteger(value) && value > 0)) {
-            throw new ApiError(400, "ข้อมูลจังหวัด อำเภอ หรือตำบลไม่ถูกต้อง");
+            throw new ApiError(400, "Los datos de estado, municipio o colonia no son válidos."); // "ข้อมูลจังหวัด อำเภอ หรือตำบลไม่ถูกต้อง"
         }
         const loc_address = typeof body.loc_address === "string" ? body.loc_address.trim() : "";
         const zip_code = String(body.zip_code ?? "").trim();
-        if (!loc_address || !zip_code) throw new ApiError(400, "กรุณาระบุข้อมูลที่อยู่ให้ครบถ้วน");
+        if (!loc_address || !zip_code) throw new ApiError(400, "Completa toda la información de la dirección."); // "กรุณาระบุข้อมูลที่อยู่ให้ครบถ้วน"
         return {
             st_id, loc_address, zip_code,
             Provinces_id, Districts_id, Subdistricts_id,
@@ -46,22 +46,22 @@ function parseMexicoLocation(body: Record<string, unknown>): CreateLocationInput
     }
 
     const zip_code = String(body.zip_code ?? "");
-    if (!/^\d{5}$/.test(zip_code)) throw new ApiError(400, "รหัสไปรษณีย์เม็กซิโกต้องมี 5 หลัก");
+    if (!/^\d{5}$/.test(zip_code)) throw new ApiError(400, "El código postal de México debe tener 5 dígitos."); // "รหัสไปรษณีย์เม็กซิโกต้องมี 5 หลัก"
 
     const latitude = Number(body.latitude);
     const longitude = Number(body.longitude);
     if (!Number.isFinite(latitude) || latitude < 14 || latitude > 33) {
-        throw new ApiError(400, "พิกัด latitude อยู่นอกประเทศเม็กซิโก");
+        throw new ApiError(400, "La coordenada de latitud está fuera de México."); // "พิกัด latitude อยู่นอกประเทศเม็กซิโก"
     }
     if (!Number.isFinite(longitude) || longitude < -119 || longitude > -86) {
-        throw new ApiError(400, "พิกัด longitude อยู่นอกประเทศเม็กซิโก");
+        throw new ApiError(400, "La coordenada de longitud está fuera de México."); // "พิกัด longitude อยู่นอกประเทศเม็กซิโก"
     }
 
     const rawFormattedAddress = body.formatted_address;
     if (rawFormattedAddress != null && (
         typeof rawFormattedAddress !== "string" || rawFormattedAddress.length > FIELD_LIMITS.formatted_address
     )) {
-        throw new ApiError(400, `formatted_address ต้องไม่เกิน ${FIELD_LIMITS.formatted_address} ตัวอักษร`);
+        throw new ApiError(400, `formatted_address no debe superar ${FIELD_LIMITS.formatted_address} caracteres.`); // "formatted_address ต้องไม่เกิน ${FIELD_LIMITS.formatted_address} ตัวอักษร"
     }
 
     return {

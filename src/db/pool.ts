@@ -13,10 +13,10 @@ export const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
 
-    // กัน connection “เน่า” + network idle kill
+    // Evita conexiones “muertas” + que la red las cierre por inactividad (กัน connection “เน่า” + network idle kill)
     enableKeepAlive: true,
     keepAliveInitialDelay: 10_000,
 
-    // กันค้างยาว
+    // Evita que se quede colgado por mucho tiempo (กันค้างยาว)
     connectTimeout: 10_000,
 });

@@ -6,12 +6,12 @@ export function extractImageSrcsFromLexical(jsonString: string): string[] {
         function walk(node: any) {
             if (!node) return;
 
-            // เก็บ image
+            // Guarda la imagen (เก็บ image)
             if (node.type === "image" && typeof node.src === "string") {
                 images.push(node.src);
             }
 
-            // เดินทุก key (สำคัญ)
+            // Recorre todas las keys (importante) (เดินทุก key (สำคัญ))
             if (typeof node === "object") {
                 for (const key in node) {
                     const value = node[key];

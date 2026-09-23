@@ -66,8 +66,8 @@ export async function translateProductFields(
         if (originalIndex !== undefined) th[originalIndex] = result.text;
     });
 
-    // DeepL อาจคืนคำอังกฤษในช่องภาษาไทยสำหรับคำสเปนสั้น ๆ เช่น prueba -> test
-    // ใช้ Gemini เฉพาะรายการที่ผลไทยซ้ำกับอังกฤษ แต่ต้นฉบับสเปนไม่ได้เป็นคำเดียวกัน
+    // DeepL puede devolver la palabra en inglés en el campo de tailandés para palabras cortas en español, por ejemplo prueba -> test (DeepL อาจคืนคำอังกฤษในช่องภาษาไทยสำหรับคำสเปนสั้น ๆ เช่น prueba -> test)
+    // Usa Gemini solo para los elementos donde el resultado en tailandés coincide con el inglés, pero el original en español no es la misma palabra (ใช้ Gemini เฉพาะรายการที่ผลไทยซ้ำกับอังกฤษ แต่ต้นฉบับสเปนไม่ได้เป็นคำเดียวกัน)
     const suspiciousThaiIndexes = nonEmptyItems
         .map(({ text, index }) => ({ text, index }))
         .filter(({ text, index }) => {

@@ -4,7 +4,7 @@ import { BuyerAuth } from "../../shared/middlewares/buyerAuth.js";
 
 export const registerBuyerRouter = Router();
 
-// Public — สมัคร / ล็อกอิน
+// Public — registro / inicio de sesión (สมัคร / ล็อกอิน)
 registerBuyerRouter.post("/register", controller.register);
 registerBuyerRouter.post("/login", controller.login);
 registerBuyerRouter.post("/google", controller.googleLogin);
@@ -14,7 +14,7 @@ registerBuyerRouter.post("/logout", controller.logout);
 registerBuyerRouter.post("/forgot-password", controller.forgotPassword);
 registerBuyerRouter.post("/reset-password", controller.resetPassword);
 
-// Protected — ต้องล็อกอินก่อน (BuyerAuth ตรวจ JWT แล้วใส่ req.userId)
+// Protected — requiere haber iniciado sesión primero (BuyerAuth verifica el JWT y coloca req.userId) (ต้องล็อกอินก่อน (BuyerAuth ตรวจ JWT แล้วใส่ req.userId))
 registerBuyerRouter.get("/me", BuyerAuth, controller.getMe);
 registerBuyerRouter.patch("/me", BuyerAuth, controller.updateMe);
 registerBuyerRouter.patch("/me/password", BuyerAuth, controller.changePassword);

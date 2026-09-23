@@ -400,8 +400,8 @@ export async function CreateEmpAdmins(input: CreateEmpInput): Promise<{ employee
             ...input,
             e_usercode: username,
             e_password: input.e_password || await bcrypt.hash(username, 10),
-            // คงค่าเฉพาะเพื่อรองรับฐานข้อมูลเดิมที่ e_email ยังเป็น NOT NULL
-            // ระบบไม่แสดงหรือใช้ค่านี้สำหรับการเข้าสู่ระบบอีกต่อไป
+            // Se mantiene solo para compatibilidad con la base de datos anterior donde e_email todavía es NOT NULL (คงค่าเฉพาะเพื่อรองรับฐานข้อมูลเดิมที่ e_email ยังเป็น NOT NULL)
+            // El sistema ya no muestra ni usa este valor para el inicio de sesión (ระบบไม่แสดงหรือใช้ค่านี้สำหรับการเข้าสู่ระบบอีกต่อไป)
             e_email: input.e_email?.trim() || `${username.toLowerCase()}@internal.local`,
         };
         const [res] = await conn.query<ResultSetHeader>(`INSERT INTO Employees SET ?`, [employee]);

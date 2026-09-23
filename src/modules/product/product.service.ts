@@ -27,7 +27,7 @@ import {
 import { fileUploadImage } from "../../shared/middlewares/fileUploadImage.js";
 import { extractImageSrcsFromLexical } from "../../shared/utils/ฺBase64Image/Lexical/extractImageSrcsFromLexical.js";
 
-// ใช้แค็ตตาล็อกหลักภายในระบบเพียงรายการเดียว ผู้ใช้ไม่ต้องเลือกเว็บไซต์แล้ว
+// Se usa un único catálogo principal en el sistema; el usuario ya no necesita elegir el sitio web. (ใช้แค็ตตาล็อกหลักภายในระบบเพียงรายการเดียว ผู้ใช้ไม่ต้องเลือกเว็บไซต์แล้ว)
 const PRIMARY_CATALOG_ID = 1;
 
 export async function getProductName(
@@ -183,7 +183,7 @@ export async function createProduct(
       e_id: input.e_id,
       p_code: p_code,
       p_isActive: input.p_isActive,
-      // ระบบ Mexico ไม่มีขั้นตอน seller approval แล้ว
+      // El sistema de México ya no tiene el paso de aprobación del vendedor. (ระบบ Mexico ไม่มีขั้นตอน seller approval แล้ว)
       p_isAccept: 1,
       c_id: input.c_id,
       b_id: input.b_id,
@@ -247,9 +247,9 @@ export async function UpdateProducts(
 ): Promise<void> {
   const conn = await pool.getConnection();
 
-  // เก็บ path ของรูปใหม่ไว้ เผื่อ rollback แล้วต้องลบทิ้ง
+  // Guarda las rutas de las imágenes nuevas, por si hay rollback y hay que eliminarlas. (เก็บ path ของรูปใหม่ไว้ เผื่อ rollback แล้วต้องลบทิ้ง)
   const uploadedPaths: string[] = [];
-  // ลบไฟล์เก่าหลัง commit เท่านั้น เพื่อไม่ให้ DB rollback แล้วชี้ไปหาไฟล์ที่ถูกลบ
+  // Elimina los archivos antiguos solo después del commit, para que un rollback de la BD no apunte a archivos ya eliminados. (ลบไฟล์เก่าหลัง commit เท่านั้น เพื่อไม่ให้ DB rollback แล้วชี้ไปหาไฟล์ที่ถูกลบ)
   const removedImagePaths: string[] = [];
 
   try {
@@ -315,7 +315,7 @@ export async function UpdateProducts(
       [masterDataProduct, p_id],
     );
     // -----------------------------
-    // 4) จัดการรูปเดิมที่ต้องเก็บ/ลบ และเพิ่มรูปใหม่
+    // 4) Gestiona las imágenes existentes que hay que conservar/eliminar y agrega las nuevas (จัดการรูปเดิมที่ต้องเก็บ/ลบ และเพิ่มรูปใหม่)
     // -----------------------------
     if (input.existing_image_ids !== undefined || files.length > 0) {
       const [oldImages] = await conn.query<ImageProductRow[] & RowDataPacket[]>(
@@ -323,7 +323,7 @@ export async function UpdateProducts(
         [p_id],
       );
 
-      // Client เดิมที่ไม่ส่ง existing_image_ids และส่งไฟล์ใหม่ ยังคงใช้พฤติกรรม replace ทั้งหมด
+      // Los clientes antiguos que no envían existing_image_ids y sí envían archivos nuevos siguen usando el comportamiento de reemplazar todo. (Client เดิมที่ไม่ส่ง existing_image_ids และส่งไฟล์ใหม่ ยังคงใช้พฤติกรรม replace ทั้งหมด)
       const requestedIds = input.existing_image_ids ?? [];
       const keepIds = [...new Set(requestedIds)];
       const oldImageIds = new Set(oldImages.map((image) => image.ip_id));
@@ -368,7 +368,7 @@ export async function UpdateProducts(
         );
       }
 
-      // กำหนดรูปแรกเป็นรูปหลักเสมอ หลังจากรายการรูปสุดท้ายถูกบันทึกครบแล้ว
+      // Siempre define la primera imagen como principal, después de guardar por completo la lista final de imágenes. (กำหนดรูปแรกเป็นรูปหลักเสมอ หลังจากรายการรูปสุดท้ายถูกบันทึกครบแล้ว)
       await conn.query("UPDATE ImageProduct SET is_primary = NULL WHERE p_id = ?", [p_id]);
       const [primaryRows] = await conn.query<(RowDataPacket & { ip_id: number })[]>(
         "SELECT ip_id FROM ImageProduct WHERE p_id = ? ORDER BY ip_id ASC LIMIT 1",
@@ -383,7 +383,7 @@ export async function UpdateProducts(
     await conn.commit();
   } catch (err) {
     await conn.rollback();
-    // ถ้า rollback แล้ว รูปใหม่ที่ upload ไปแล้วต้องลบทิ้ง
+    // Si ocurre un rollback, las imágenes nuevas ya subidas deben eliminarse. (ถ้า rollback แล้ว รูปใหม่ที่ upload ไปแล้วต้องลบทิ้ง)
     for (const uploadedPath of uploadedPaths) {
       removePhysicalFile(uploadedPath);
     }
@@ -393,7 +393,7 @@ export async function UpdateProducts(
     conn.release();
   }
 
-  // การลบไฟล์เป็น cleanup หลัง DB สำเร็จ ความผิดพลาดของไฟล์ใดไฟล์หนึ่งไม่ควรย้อนผล DB
+  // Eliminar los archivos es una limpieza posterior al éxito de la BD; el error de un archivo no debe revertir el resultado de la BD. (การลบไฟล์เป็น cleanup หลัง DB สำเร็จ ความผิดพลาดของไฟล์ใดไฟล์หนึ่งไม่ควรย้อนผล DB)
   await Promise.allSettled(
     removedImagePaths.map((imagePath) => removePhysicalFile(imagePath)),
   );
@@ -566,7 +566,7 @@ export async function createOptionVariant(data: SubmitPayload): Promise<void> {
       }
 
       // 2.1 delete old poi that no longer exists in request
-      // ต้องลบ VariantOptionItems ก่อน เพราะ FK อ้าง poi_id
+      // Hay que eliminar VariantOptionItems primero, porque la FK referencia poi_id. (ต้องลบ VariantOptionItems ก่อน เพราะ FK อ้าง poi_id)
       for (const [poi_value, poi_id] of existingPoiMap.entries()) {
         if (!incomingValueSet.has(poi_value)) {
           await conn.query(`DELETE FROM VariantOptionItems WHERE poi_id = ?`, [
@@ -592,7 +592,7 @@ export async function createOptionVariant(data: SubmitPayload): Promise<void> {
         }
       }
 
-      // 2.3 rebuild poiIdMap ให้ตรงกับ temp poi_id/index ที่ frontend ส่งมา
+      // 2.3 reconstruye poiIdMap para que coincida con el poi_id/índice temporal que envía el frontend (rebuild poiIdMap ให้ตรงกับ temp poi_id/index ที่ frontend ส่งมา)
       for (const [index, item] of optionItems.entries()) {
         if (Number(item.otype_id) === numericOtypeId) {
           const poiId = existingPoiMap.get(item.poi_value.trim());
@@ -607,22 +607,22 @@ export async function createOptionVariant(data: SubmitPayload): Promise<void> {
     }
 
     // 2.4 delete ProductOptions that no longer exist in request
-    // ลบหลังจาก sync option items เสร็จแล้ว เพื่อไม่ชน FK
+    // Elimina después de terminar de sincronizar los option items, para no chocar con la FK. (ลบหลังจาก sync option items เสร็จแล้ว เพื่อไม่ชน FK)
     for (const [otype_id, potn_id] of existingOptionMap.entries()) {
       if (!incomingOptionTypeSet.has(otype_id)) {
-        // ลบ mapping ก่อน
+        // Elimina primero el mapping (ลบ mapping ก่อน)
         await conn.query(
           `DELETE voi FROM VariantOptionItems voi
                      INNER JOIN ProductOptionItems poi ON poi.poi_id = voi.poi_id
                      WHERE poi.potn_id = ?`,
           [potn_id],
         );
-        // ลบ option items
+        // Elimina los option items (ลบ option items)
         await conn.query(`DELETE FROM ProductOptionItems WHERE potn_id = ?`, [
           potn_id,
         ]);
 
-        // ลบ option
+        // Elimina el option (ลบ option)
         await conn.query(`DELETE FROM ProductOptions  WHERE potn_id = ?`, [
           potn_id,
         ]);
@@ -653,7 +653,7 @@ export async function createOptionVariant(data: SubmitPayload): Promise<void> {
     const incomingSkuSet = new Set(variants.map((v) => v.pv_sku));
 
     // 3.1 delete variants removed by user
-    // ต้องลบลูกก่อนตาม FK
+    // Hay que eliminar los registros hijos primero, según la FK. (ต้องลบลูกก่อนตาม FK)
     for (const [pv_sku, oldRow] of existingVariantMap.entries()) {
       if (!incomingSkuSet.has(pv_sku)) {
         await conn.query(`DELETE FROM Inventorys  WHERE pv_id = ?`, [
@@ -714,7 +714,7 @@ export async function createOptionVariant(data: SubmitPayload): Promise<void> {
           ],
         );
 
-        // ถ้ามีรูปใหม่มาแทนรูปเก่า ค่อย mark รูปเก่าไว้ลบ
+        // Si hay una imagen nueva que reemplaza a la anterior, marca la anterior para eliminarla. (ถ้ามีรูปใหม่มาแทนรูปเก่า ค่อย mark รูปเก่าไว้ลบ)
         if (
           oldRow.image_url &&
           nextImageUrl &&
@@ -924,7 +924,7 @@ export async function deleteProduct(p_id: number): Promise<string[]> {
   try {
     await conn.beginTransaction();
 
-    // 1) ตรวจว่ามี product จริงไหม
+    // 1) Verifica que el product exista realmente (ตรวจว่ามี product จริงไหม)
     const [productRows] = await conn.query<RowDataPacket[]>(
       `SELECT p_id FROM Products WHERE p_id = ? LIMIT 1`,
       [p_id],
@@ -934,7 +934,7 @@ export async function deleteProduct(p_id: number): Promise<string[]> {
       throw new ApiError(404, CommonMessages.notFound);
     }
 
-    // 2) gather รูปทั้งหมดก่อนลบ
+    // 2) Recolecta todas las imágenes antes de eliminar (gather รูปทั้งหมดก่อนลบ)
     const [productImages] = await conn.query<
       ImageProductRow[] & RowDataPacket[]
     >(`SELECT ip_id, ip_image_url  FROM ImageProduct  WHERE p_id = ?`, [p_id]);
@@ -956,10 +956,10 @@ export async function deleteProduct(p_id: number): Promise<string[]> {
       ),
     ];
 
-    // 3) ลบ table ลูกก่อน
-    // หมายเหตุ: ปรับตาม schema จริงของคุณ
+    // 3) Elimina primero las tablas hijas (ลบ table ลูกก่อน)
+    // Nota: ajusta según tu schema real (หมายเหตุ: ปรับตาม schema จริงของคุณ)
 
-    // inventory ของ variant
+    // inventory del variant (inventory ของ variant)
     await conn.query(
       `DELETE inv FROM Inventorys inv
              INNER JOIN ProductVariants pv ON pv.pv_id = inv.pv_id
@@ -978,8 +978,8 @@ export async function deleteProduct(p_id: number): Promise<string[]> {
     // variants
     await conn.query(`DELETE FROM ProductVariants WHERE p_id = ?`, [p_id]);
 
-    // option items / option groups ของ product
-    // ปรับชื่อตารางตามจริงของคุณ
+    // option items / option groups del product (option items / option groups ของ product)
+    // Ajusta el nombre de la tabla según el tuyo real (ปรับชื่อตารางตามจริงของคุณ)
     await conn.query(
       `DELETE poi FROM ProductOptionItems poi
              INNER JOIN ProductOptions po ON po.potn_id = poi.potn_id
@@ -989,21 +989,21 @@ export async function deleteProduct(p_id: number): Promise<string[]> {
 
     await conn.query(`DELETE FROM ProductOptions WHERE p_id = ?`, [p_id]);
 
-    // รูปสินค้า
+    // Imágenes del producto (รูปสินค้า)
     await conn.query(`DELETE FROM ImageProduct  WHERE p_id = ?`, [p_id]);
 
     // tag map
     await conn.query(`DELETE FROM ProductTagMaps  WHERE p_id = ?`, [p_id]);
 
-    // ภาษาของสินค้า
+    // Idiomas del producto (ภาษาของสินค้า)
     await conn.query(`DELETE FROM ProductLangs WHERE p_id = ?`, [p_id]);
 
-    // สุดท้าย product แม่
+    // Por último, el product padre (สุดท้าย product แม่)
     await conn.query(`DELETE FROM Products  WHERE p_id = ?`, [p_id]);
 
     await conn.commit();
 
-    // คืน path รูปออกไปให้ controller ไปค่อยลบไฟล์จริงหลัง commit
+    // Devuelve las rutas de las imágenes para que el controller elimine los archivos reales después del commit. (คืน path รูปออกไปให้ controller ไปค่อยลบไฟล์จริงหลัง commit)
     return [...new Set(imagePaths)];
   } catch (err) {
     await conn.rollback();

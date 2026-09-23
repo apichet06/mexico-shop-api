@@ -74,14 +74,14 @@ export const UpdateLandingPage = asyncHandler(async (req, res) => {
     const data = rawData ? JSON.parse(rawData) : req.body;
     const file = req.file;
     const oldImage = await landingpage.GetLandingPageById(Number(lp_id)).then(lp => lp?.lp_imag_url);
-    let imagePath = oldImage; // เริ่มต้นด้วยภาพเก่า
+    let imagePath = oldImage; // Comienza con la imagen anterior (เริ่มต้นด้วยภาพเก่า)
     if (file) {
         if (oldImage) {
             const fullOldImagePath = pathfile.join(process.cwd(), 'uploads', oldImage);
             try {
                 await fs.unlinkSync(fullOldImagePath);
             } catch (err: any) {
-                console.log("ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):", err.message);
+                console.log("No se pudo eliminar la imagen anterior (puede que el archivo no exista):", err.message); // "ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):"
             }
         }
         const path = await fileUploadImage(file, `ldp_${Date.now()}`, 'landingpage');
@@ -117,7 +117,7 @@ export const DeleteLandingPage = asyncHandler(async (req, res) => {
         try {
             await fs.unlinkSync(fullOldImagePath);
         } catch (err: any) {
-            console.log("ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):", err.message);
+            console.log("No se pudo eliminar la imagen anterior (puede que el archivo no exista):", err.message); // "ลบรูปเก่าไม่ได้ (อาจไม่มีไฟล์):"
         }
     }
     await landingpage.DeleteLandingPage(Number(group_id));

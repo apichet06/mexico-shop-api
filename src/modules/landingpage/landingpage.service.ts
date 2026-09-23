@@ -59,7 +59,7 @@ export async function generateUniqueSlug(slug: string): Promise<string> {
     try {
         const { baseSlug } = splitSlug(slug);
 
-        // ดึง slug ที่คล้ายกันทั้งหมด
+        // Obtiene todos los slugs similares (ดึง slug ที่คล้ายกันทั้งหมด)
         const [rows] = await conn.query<any[]>(
             `SELECT lp_slug FROM LandingPages WHERE lp_slug LIKE ?`,
             [`${baseSlug}-%`]

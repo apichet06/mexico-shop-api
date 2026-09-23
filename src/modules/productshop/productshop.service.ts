@@ -9,21 +9,21 @@ export type GetProductShopParams = {
     page?: number
     category?: string
     limit?: number
-    ctl_id?: number  // filter ตาม catalog (arcana=1, deadstock=2)
+    ctl_id?: number  // filtro según catalog (arcana=1, deadstock=2) (filter ตาม catalog (arcana=1, deadstock=2))
     random?: boolean
     in_stock_only?: boolean
 }
 
 /**
- * Fisher-Yates shuffle — สลับตำแหน่ง array แบบ random
- * ทำงาน O(n) ไม่ใช้ ORDER BY RAND() ที่ช้าใน SQL
+ * Fisher-Yates shuffle — reordena aleatoriamente las posiciones del array (สลับตำแหน่ง array แบบ random)
+ * Funciona en O(n), no usa ORDER BY RAND() que es lento en SQL (ทำงาน O(n) ไม่ใช้ ORDER BY RAND() ที่ช้าใน SQL)
  */
 function shuffleArray<T>(arr: T[]): T[] {
     const copy = [...arr]
     for (let i = copy.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
-        // ใช้ temp variable + as T เพราะ TypeScript ถือว่า index access คืน T | undefined
-        // แต่เรารู้ว่า i และ j อยู่ใน bounds แน่นอน จึง cast ได้ปลอดภัย
+        // Usa una variable temporal + as T porque TypeScript considera que el acceso por índice devuelve T | undefined (ใช้ temp variable + as T เพราะ TypeScript ถือว่า index access คืน T | undefined)
+        // Pero sabemos con certeza que i y j están dentro de los límites, así que el cast es seguro (แต่เรารู้ว่า i และ j อยู่ใน bounds แน่นอน จึง cast ได้ปลอดภัย)
         const temp = copy[i] as T
         copy[i] = copy[j] as T
         copy[j] = temp
@@ -131,7 +131,7 @@ export async function getProductShop({
             queryParams.push(Number(safeCategory))
         }
 
-        // filter ตาม catalog (arcana / deadstock) ที่ฝั่ง DB เลย ไม่ต้อง filter ซ้ำ client
+        // Filtra según catalog (arcana / deadstock) directamente en la BD; no hace falta filtrar de nuevo en el cliente (filter ตาม catalog (arcana / deadstock) ที่ฝั่ง DB เลย ไม่ต้อง filter ซ้ำ client)
         if (ctl_id) {
             whereConditions.push(`a.ctl_id = ?`)
             queryParams.push(ctl_id)
@@ -329,9 +329,9 @@ export async function getProductShop({
             tags: tagMap.get(row.p_id) ?? [],
         }))
 
-        // shuffle เฉพาะ tag-based sort ที่ขอ random เช่นหน้าแรก
-        // หน้ารวมสินค้าต้องเรียงนิ่งเพื่อให้ pagination ไม่ซ้ำ/ไม่ขาดตอน
-        // sort ตามราคา (price-low/price-high) ไม่ shuffle เพราะ ordering มีความหมาย
+        // Solo hace shuffle en los sort basados en tags que pidieron random, como la página principal (shuffle เฉพาะ tag-based sort ที่ขอ random เช่นหน้าแรก)
+        // La página de listado de productos debe mantener un orden estable para que la paginación no se repita ni se salte elementos (หน้ารวมสินค้าต้องเรียงนิ่งเพื่อให้ pagination ไม่ซ้ำ/ไม่ขาดตอน)
+        // El sort por precio (price-low/price-high) no hace shuffle porque el orden tiene significado (sort ตามราคา (price-low/price-high) ไม่ shuffle เพราะ ordering มีความหมาย)
         const TAG_SORTS = ["new", "popular", "featured"] as const
         const items = random && TAG_SORTS.includes(safeSort as typeof TAG_SORTS[number])
             ? shuffleArray(mappedItems)
@@ -444,7 +444,7 @@ export async function getProductShopById(
             [p_id]
         )
 
-        //  รวม stock ทุกคลังให้เหลือ 1 แถวต่อ 1 variant
+        // Combina el stock de todas las bodegas para dejar 1 fila por cada variant (รวม stock ทุกคลังให้เหลือ 1 แถวต่อ 1 variant)
         const [variantRows] = await conn.query<(RowDataPacket & ProductVariantDTO)[]>(
             `
             SELECT
@@ -560,7 +560,7 @@ export async function getProductShopById(
             [lg_code, p_id]
         )
 
-        //   ดึง stock รายคลังจริงของแต่ละ variant
+        // Obtiene el stock real por bodega de cada variant (ดึง stock รายคลังจริงของแต่ละ variant)
         const [inventoryByVariantRows] = await conn.query<(RowDataPacket & InventoryByVariantDTO)[]>(
             `
             SELECT
@@ -587,7 +587,7 @@ export async function getProductShopById(
             [p_id]
         )
 
-        //  ถ้ายังอยากเก็บชื่อจังหวัดรวมไว้แสดงหน้าเดิม ก็ให้ดึงจาก inventory จริง
+        // Si todavía se quiere mantener el nombre del estado agrupado para mostrar en la página original, hay que obtenerlo del inventory real (ถ้ายังอยากเก็บชื่อจังหวัดรวมไว้แสดงหน้าเดิม ก็ให้ดึงจาก inventory จริง)
         const [inventoryStoreRows] = await conn.query<(RowDataPacket & InventoryStoreDTO)[]>(
             `
             SELECT DISTINCT

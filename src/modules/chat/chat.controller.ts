@@ -79,8 +79,8 @@ export const adminGetOrCreateStoreConversation = asyncHandler(async (req, res) =
     res.json({ data: conversation });
 });
 
-// หา/สร้างห้องแชทระหว่างร้านนี้กับ buyer ตาม buyer_id
-// ถ้ามีห้อง open อยู่แล้วจะคืน conv เดิม ถ้าไม่มีจะสร้างใหม่
+// Busca o crea una sala de chat entre esta tienda y el buyer según buyer_id (หา/สร้างห้องแชทระหว่างร้านนี้กับ buyer ตาม buyer_id)
+// Si ya existe una sala abierta, devuelve la conversación existente; si no existe, crea una nueva (ถ้ามีห้อง open อยู่แล้วจะคืน conv เดิม ถ้าไม่มีจะสร้างใหม่)
 export const adminGetOrCreateBuyerConversation = asyncHandler(async (req, res) => {
     const storeId = req.storeId;
     if (!storeId) throw new ApiError(401, "No has iniciado sesión.");

@@ -4,7 +4,7 @@ import { EN, ES, JA, TH, translator } from "../../translate/translate.client.js"
 import type { LexicalEditorState, MultiLangLexical } from "./LexicalFunction.js";
 import { IS_DEV } from "../../config/env.js";
 
-//สำหรับการบันทึกรูปภาพในรูปแบบ SRC  ไม่ใช่แบบ image:Base64
+// Para guardar imágenes en formato SRC, no en formato image:Base64 (สำหรับการบันทึกรูปภาพในรูปแบบ SRC ไม่ใช่แบบ image:Base64)
 
 export async function translateLexicalContent(
     input: LexicalEditorState | string,
@@ -21,7 +21,7 @@ export async function translateLexicalContent(
     //     });
     // }
 
-    // ไม่มีข้อความให้แปล
+    // No hay texto para traducir (ไม่มีข้อความให้แปล)
     if (sourceTexts.length === 0) {
         const originalJson = JSON.stringify(editorState);
         return {
@@ -32,7 +32,7 @@ export async function translateLexicalContent(
         };
     }
 
-    // มีแต่ string ว่าง
+    // Solo hay strings vacíos (มีแต่ string ว่าง)
     const hasMeaningfulText = sourceTexts.some((text: string) => text.trim() !== "");
     if (!hasMeaningfulText) {
         const originalJson = JSON.stringify(editorState);

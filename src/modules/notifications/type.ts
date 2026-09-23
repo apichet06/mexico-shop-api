@@ -25,14 +25,14 @@ export type NotificationInput = {
     ref_type: string
     ref_id: number
     priority?: NotificationPriority
-    /** ส่งสำเนาแจ้งเตือนนี้ไปให้ store ที่เป็น platform store (เจ้าของเว็บไซต์) ด้วยหรือไม่ */
+    /** Indica si también se debe enviar una copia de esta notificación a la store que es platform store (dueña del sitio) (ส่งสำเนาแจ้งเตือนนี้ไปให้ store ที่เป็น platform store (เจ้าของเว็บไซต์) ด้วยหรือไม่) */
     notifyPlatform?: boolean
 }
 
 export type PlatformNotificationInput = Omit<NotificationInput, "target_id">
 
 export function mapPriorityToType(status: string) {
-    // ป้ายระดับความสำคัญของกระดิ่งใช้ภาษาสเปนให้ตรงกับข้อความที่ API บันทึก
+    // La etiqueta de nivel de prioridad de la campana usa español para coincidir con el texto que guarda la API (ป้ายระดับความสำคัญของกระดิ่งใช้ภาษาสเปนให้ตรงกับข้อความที่ API บันทึก)
     const map: Record<string, string> = {
         LOW: "Baja",
         NORMAL: "Normal",

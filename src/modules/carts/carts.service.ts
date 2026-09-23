@@ -14,7 +14,7 @@ export async function addCartItem(input: AddCartItemInput): Promise<CartItemDTO>
         );
 
         const variant = pvRows[0];
-        if (!variant) throw new ApiError(404, "ไม่พบสินค้าที่ระบุ");
+        if (!variant) throw new ApiError(404, "No se encontró el producto especificado."); // "ไม่พบสินค้าที่ระบุ"
 
         const unitPrice = Number(variant.pv_price);
         const discountAmount = Math.round(unitPrice * (Number(variant.discount) / 100) * 100) / 100;
@@ -78,7 +78,7 @@ export async function addCartItem(input: AddCartItemInput): Promise<CartItemDTO>
             [ciId]
         );
 
-        if (!rows[0]) throw new ApiError(500, "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        if (!rows[0]) throw new ApiError(500, "Ocurrió un error al guardar los datos."); // "เกิดข้อผิดพลาดในการบันทึกข้อมูล"
         return rows[0];
     } catch (err) {
         await conn.rollback();
@@ -164,7 +164,7 @@ export async function getCart(u_id: number, lg_code = "es"): Promise<CartDTO> {
 export async function updateCartItem(input: UpdateCartItemInput): Promise<CartItemDTO> {
     const conn = await pool.getConnection();
     try {
-        // ตรวจว่า ci_id นี้เป็นของ user คนนี้จริง
+        // Verifica que este ci_id realmente pertenezca a este usuario (ตรวจว่า ci_id นี้เป็นของ user คนนี้จริง)
         const [rows] = await conn.query<(RowDataPacket & { ci_id: number })[]>(
             `SELECT ci.ci_id FROM Cart_items ci
              INNER JOIN Carts c ON c.cart_id = ci.cart_id
@@ -172,7 +172,7 @@ export async function updateCartItem(input: UpdateCartItemInput): Promise<CartIt
             [input.ci_id, input.u_id]
         );
 
-        if (!rows[0]) throw new ApiError(404, "ไม่พบรายการสินค้าในตะกร้า");
+        if (!rows[0]) throw new ApiError(404, "No se encontró el artículo en el carrito."); // "ไม่พบรายการสินค้าในตะกร้า"
 
         await conn.query(
             "UPDATE Cart_items SET is_selected = ?, updated_at = ? WHERE ci_id = ?",
@@ -184,7 +184,7 @@ export async function updateCartItem(input: UpdateCartItemInput): Promise<CartIt
             [input.ci_id]
         );
 
-        if (!updated[0]) throw new ApiError(500, "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+        if (!updated[0]) throw new ApiError(500, "Ocurrió un error al actualizar los datos."); // "เกิดข้อผิดพลาดในการอัปเดตข้อมูล"
         return updated[0];
     } finally {
         conn.release();
@@ -202,7 +202,7 @@ export async function updateCartItemQty(input: UpdateCartItemQtyInput): Promise<
             [input.ci_id, input.u_id]
         );
 
-        if (!rows[0]) throw new ApiError(404, "ไม่พบรายการสินค้าในตะกร้า");
+        if (!rows[0]) throw new ApiError(404, "No se encontró el artículo en el carrito."); // "ไม่พบรายการสินค้าในตะกร้า"
 
         const { unit_price, discount_amount } = rows[0];
         const effectivePrice = Number(unit_price) - Number(discount_amount);
@@ -218,7 +218,7 @@ export async function updateCartItemQty(input: UpdateCartItemQtyInput): Promise<
             [input.ci_id]
         );
 
-        if (!updated[0]) throw new ApiError(500, "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+        if (!updated[0]) throw new ApiError(500, "Ocurrió un error al actualizar los datos."); // "เกิดข้อผิดพลาดในการอัปเดตข้อมูล"
         return updated[0];
     } finally {
         conn.release();
@@ -238,7 +238,7 @@ export async function deleteCartItem(ci_id: number, u_id: number): Promise<void>
             [ci_id, u_id]
         );
 
-        if (!rows[0]) throw new ApiError(404, "ไม่พบรายการสินค้าในตะกร้า");
+        if (!rows[0]) throw new ApiError(404, "No se encontró el artículo en el carrito."); // "ไม่พบรายการสินค้าในตะกร้า"
 
         const cartId = rows[0].cart_id;
 

@@ -79,7 +79,7 @@ function normalizeProductIds(productIds?: number[]): number[] {
     return [...new Set(productIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
-// แปลง row จาก MySQL ให้เป็น DTO ที่ frontend ใช้ง่าย และแปลง GROUP_CONCAT เป็น array
+// Convierte la row de MySQL en un DTO fácil de usar para el frontend, y convierte el GROUP_CONCAT en un array (แปลง row จาก MySQL ให้เป็น DTO ที่ frontend ใช้ง่าย และแปลง GROUP_CONCAT เป็น array)
 function mapCoupon(row: CouponRow): CouponDTO {
     const productIds = row.product_ids
         ? row.product_ids.split(",").map(Number).filter((id) => Number.isInteger(id))
@@ -106,7 +106,7 @@ function mapCoupon(row: CouponRow): CouponDTO {
     };
 }
 
-// คำนวณส่วนลดจริง โดยกันไม่ให้ลดเกิน subtotal และรองรับ max discount ของคูปอง %
+// Calcula el descuento real, evitando que supere el subtotal, y soporta el descuento máximo de los cupones en % (คำนวณส่วนลดจริง โดยกันไม่ให้ลดเกิน subtotal และรองรับ max discount ของคูปอง %)
 function calculateDiscount(coupon: CouponDTO, subtotal: number): number {
     if (subtotal <= 0) return 0;
 
@@ -121,7 +121,7 @@ function calculateDiscount(coupon: CouponDTO, subtotal: number): number {
     return Math.round(Math.min(cappedDiscount, subtotal) * 100) / 100;
 }
 
-// sync รายการสินค้าที่คูปองใช้ได้: ล้าง mapping เดิมแล้ว insert ชุดใหม่ใน transaction เดียวกัน
+// Sincroniza la lista de productos donde aplica el cupón: limpia el mapping anterior e inserta el nuevo dentro de la misma transacción (sync รายการสินค้าที่คูปองใช้ได้: ล้าง mapping เดิมแล้ว insert ชุดใหม่ใน transaction เดียวกัน)
 async function syncCouponProducts(conn: PoolConnection, coId: number, productIds: number[]): Promise<void> {
     await conn.query("DELETE FROM CouponProducts WHERE co_id = ?", [coId]);
 
@@ -131,7 +131,7 @@ async function syncCouponProducts(conn: PoolConnection, coId: number, productIds
     await conn.query("INSERT INTO CouponProducts (co_id, p_id) VALUES ?", [rows]);
 }
 
-// ใช้ตอน checkout เพื่อ lock row คูปอง กัน used_count ถูกใช้พร้อมกันจนเกิน limit
+// Se usa durante el checkout para bloquear la row del cupón y evitar que used_count se actualice en paralelo y supere el límite (ใช้ตอน checkout เพื่อ lock row คูปอง กัน used_count ถูกใช้พร้อมกันจนเกิน limit)
 async function getCouponByCodeForUpdate(conn: PoolConnection, coCode: string): Promise<CouponDTO | null> {
     const [rows] = await conn.query<CouponRow[]>(
         `
@@ -149,7 +149,7 @@ async function getCouponByCodeForUpdate(conn: PoolConnection, coCode: string): P
     return rows[0] ? mapCoupon(rows[0]) : null;
 }
 
-// ดึงเฉพาะสินค้าใน active cart ที่ลูกค้าเลือกไว้ เพื่อใช้เป็นฐานคำนวณคูปอง
+// Obtiene solo los productos del carrito activo que el cliente seleccionó, para usarlos como base del cálculo del cupón (ดึงเฉพาะสินค้าใน active cart ที่ลูกค้าเลือกไว้ เพื่อใช้เป็นฐานคำนวณคูปอง)
 async function getActiveCartRows(conn: PoolConnection, uId: number, stId?: number): Promise<CartCouponRow[]> {
     const params: number[] = [uId];
     const storeSql = stId ? "AND p.st_id = ?" : "";
@@ -183,7 +183,7 @@ async function getActiveCartRows(conn: PoolConnection, uId: number, stId?: numbe
     return rows;
 }
 
-// ตรวจเงื่อนไขคูปองทั้งหมดในที่เดียว: สถานะ, เวลา, limit, สินค้าที่ใช้ได้, ยอดขั้นต่ำ และยอดลด
+// Valida todas las condiciones del cupón en un solo lugar: estado, tiempo, límite, productos aplicables, monto mínimo y monto del descuento (ตรวจเงื่อนไขคูปองทั้งหมดในที่เดียว: สถานะ, เวลา, limit, สินค้าที่ใช้ได้, ยอดขั้นต่ำ และยอดลด)
 async function validateCouponWithConnection(
     conn: PoolConnection,
     input: ValidateCouponInput,
@@ -193,18 +193,18 @@ async function validateCouponWithConnection(
         ? await getCouponByCodeForUpdate(conn, input.co_code)
         : await getCouponByCode(input.co_code);
 
-    if (!coupon) throw new ApiError(404, "ไม่พบคูปอง");
-    if (coupon.active !== 1) throw new ApiError(400, "คูปองนี้ถูกปิดใช้งาน");
+    if (!coupon) throw new ApiError(404, "No se encontró el cupón."); // "ไม่พบคูปอง"
+    if (coupon.active !== 1) throw new ApiError(400, "Este cupón está desactivado."); // "คูปองนี้ถูกปิดใช้งาน"
     if (input.st_id && coupon.st_id !== input.st_id) {
-        throw new ApiError(400, "คูปองนี้ใช้ได้เฉพาะร้านที่ออกคูปองเท่านั้น");
+        throw new ApiError(400, "Este cupón solo se puede usar en la tienda que lo emitió."); // "คูปองนี้ใช้ได้เฉพาะร้านที่ออกคูปองเท่านั้น"
     }
 
     const now = new Date();
-    if (now < new Date(coupon.co_datetime_start)) throw new ApiError(400, "คูปองยังไม่ถึงเวลาใช้งาน");
-    if (now > new Date(coupon.co_datetime_end)) throw new ApiError(400, "คูปองหมดอายุแล้ว");
+    if (now < new Date(coupon.co_datetime_start)) throw new ApiError(400, "Este cupón todavía no está disponible para usarse."); // "คูปองยังไม่ถึงเวลาใช้งาน"
+    if (now > new Date(coupon.co_datetime_end)) throw new ApiError(400, "Este cupón ya expiró."); // "คูปองหมดอายุแล้ว"
 
     if (coupon.usage_limit_total !== null && coupon.used_count >= coupon.usage_limit_total) {
-        throw new ApiError(400, "คูปองถูกใช้ครบจำนวนแล้ว");
+        throw new ApiError(400, "Este cupón ya alcanzó su límite de uso."); // "คูปองถูกใช้ครบจำนวนแล้ว"
     }
 
     const [claimedRows] = await conn.query<(RowDataPacket & { status: string })[]>(
@@ -214,14 +214,14 @@ async function validateCouponWithConnection(
 
     const claimedCoupon = claimedRows[0];
     if (!claimedCoupon) {
-        throw new ApiError(400, "กรุณาเก็บคูปองก่อนใช้งาน");
+        throw new ApiError(400, "Debes guardar el cupón antes de usarlo."); // "กรุณาเก็บคูปองก่อนใช้งาน"
     }
 
     if (claimedCoupon.status !== "claimed") {
-        throw new ApiError(400, "คูปองนี้ไม่พร้อมใช้งาน");
+        throw new ApiError(400, "Este cupón no está disponible para usarse."); // "คูปองนี้ไม่พร้อมใช้งาน"
     }
 
-    // นับจาก CouponRedemptions เป็น source of truth สำหรับ usage ต่อ user
+    // Cuenta desde CouponRedemptions, que es la fuente de verdad para el uso por usuario (นับจาก CouponRedemptions เป็น source of truth สำหรับ usage ต่อ user)
     const [userUsageRows] = await conn.query<(RowDataPacket & { used_count: number })[]>(
         "SELECT COUNT(*) AS used_count FROM CouponRedemptions WHERE co_id = ? AND u_id = ?",
         [coupon.co_id, input.u_id]
@@ -229,25 +229,25 @@ async function validateCouponWithConnection(
 
     const userUsedCount = Number(userUsageRows[0]?.used_count ?? 0);
     if (userUsedCount >= coupon.usage_limit_per_user) {
-        throw new ApiError(400, "คุณใช้คูปองนี้ครบจำนวนแล้ว");
+        throw new ApiError(400, "Ya usaste este cupón el máximo de veces permitido."); // "คุณใช้คูปองนี้ครบจำนวนแล้ว"
     }
 
     const cartRows = await getActiveCartRows(conn, input.u_id, input.st_id);
-    if (cartRows.length === 0) throw new ApiError(400, "ไม่มีสินค้าในตะกร้าที่เลือกไว้");
+    if (cartRows.length === 0) throw new ApiError(400, "No hay productos seleccionados en el carrito."); // "ไม่มีสินค้าในตะกร้าที่เลือกไว้"
 
-    // ถ้าไม่ได้ผูกสินค้าไว้ แปลว่าคูปองใช้ได้กับทุกสินค้าในตะกร้า
+    // Si no está vinculado a productos específicos, significa que el cupón aplica a todos los productos del carrito (ถ้าไม่ได้ผูกสินค้าไว้ แปลว่าคูปองใช้ได้กับทุกสินค้าในตะกร้า)
     const allowedProductSet = new Set(coupon.product_ids);
     const applicableRows = coupon.product_ids.length > 0
         ? cartRows.filter((row) => allowedProductSet.has(Number(row.p_id)))
         : cartRows;
 
     if (applicableRows.length === 0) {
-        throw new ApiError(400, "คูปองนี้ใช้กับสินค้าในตะกร้าไม่ได้");
+        throw new ApiError(400, "Este cupón no aplica a los productos del carrito."); // "คูปองนี้ใช้กับสินค้าในตะกร้าไม่ได้"
     }
 
     const subtotal = Math.round(applicableRows.reduce((sum, row) => sum + toNumber(row.line_total), 0) * 100) / 100;
     if (subtotal < coupon.min_order_amount) {
-        throw new ApiError(400, `ยอดขั้นต่ำสำหรับคูปองนี้คือ ${coupon.min_order_amount}`);
+        throw new ApiError(400, `El monto mínimo para este cupón es ${coupon.min_order_amount}`); // "ยอดขั้นต่ำสำหรับคูปองนี้คือ ${coupon.min_order_amount}"
     }
 
     const discount = calculateDiscount(coupon, subtotal);
@@ -387,11 +387,11 @@ export async function listCouponProducts(coId: number, stId: number): Promise<Co
 
 export async function listAvailableCouponProducts(coId: number): Promise<CouponProductDTO[]> {
     const coupon = await getCouponById(coId);
-    if (!coupon) throw new ApiError(404, "ไม่พบคูปอง");
-    if (coupon.active !== 1) throw new ApiError(400, "คูปองนี้ถูกปิดใช้งาน");
+    if (!coupon) throw new ApiError(404, "No se encontró el cupón."); // "ไม่พบคูปอง"
+    if (coupon.active !== 1) throw new ApiError(400, "Este cupón está desactivado."); // "คูปองนี้ถูกปิดใช้งาน"
 
     const now = new Date();
-    if (now > new Date(coupon.co_datetime_end)) throw new ApiError(400, "คูปองหมดอายุแล้ว");
+    if (now > new Date(coupon.co_datetime_end)) throw new ApiError(400, "Este cupón ya expiró."); // "คูปองหมดอายุแล้ว"
 
     const [rows] = await pool.query<(RowDataPacket & CouponProductDTO)[]>(
         `
@@ -418,7 +418,7 @@ export async function createCoupon(input: CreateCouponInput): Promise<number> {
     try {
         await conn.beginTransaction();
 
-        // Coupon กับ CouponProducts ต้อง commit/rollback พร้อมกัน เพื่อไม่ให้คูปองหลุด mapping
+        // Coupon y CouponProducts deben hacer commit/rollback juntos, para que el cupón no pierda su mapping (Coupon กับ CouponProducts ต้อง commit/rollback พร้อมกัน เพื่อไม่ให้คูปองหลุด mapping)
         const productIds = normalizeProductIds(input.product_ids);
         const [res] = await conn.query<ResultSetHeader>(
             "INSERT INTO Coupon SET ?",
@@ -443,7 +443,7 @@ export async function createCoupon(input: CreateCouponInput): Promise<number> {
         return res.insertId;
     } catch (err) {
         await conn.rollback();
-        if (isDupError(err)) throw new ApiError(409, "รหัสคูปองนี้ถูกใช้งานแล้ว");
+        if (isDupError(err)) throw new ApiError(409, "Este código de cupón ya está en uso."); // "รหัสคูปองนี้ถูกใช้งานแล้ว"
         throw err;
     } finally {
         conn.release();
@@ -463,7 +463,7 @@ export async function updateCoupon(coId: number, input: UpdateCouponInput): Prom
 
         if (!exists[0]) throw new ApiError(404, CommonMessages.notFound);
 
-        // สร้าง object เฉพาะ field ที่ส่งมา เพื่อให้ update แบบ partial ได้
+        // Crea el object solo con los fields enviados, para permitir una actualización parcial (สร้าง object เฉพาะ field ที่ส่งมา เพื่อให้ update แบบ partial ได้)
         const data: Record<string, unknown> = {};
         if (input.co_code !== undefined) data.co_code = input.co_code.trim();
         if (input.discount_type !== undefined) data.discount_type = input.discount_type;
@@ -486,7 +486,7 @@ export async function updateCoupon(coId: number, input: UpdateCouponInput): Prom
         await conn.commit();
     } catch (err) {
         await conn.rollback();
-        if (isDupError(err)) throw new ApiError(409, "รหัสคูปองนี้ถูกใช้งานแล้ว");
+        if (isDupError(err)) throw new ApiError(409, "Este código de cupón ya está en uso."); // "รหัสคูปองนี้ถูกใช้งานแล้ว"
         throw err;
     } finally {
         conn.release();
@@ -519,13 +519,13 @@ export async function claimCoupon(coId: number, uId: number): Promise<void> {
         );
 
         const coupon = couponRows[0];
-        if (!coupon) throw new ApiError(404, "ไม่พบคูปอง");
-        if (Number(coupon.active) !== 1) throw new ApiError(400, "คูปองนี้ถูกปิดใช้งาน");
+        if (!coupon) throw new ApiError(404, "No se encontró el cupón."); // "ไม่พบคูปอง"
+        if (Number(coupon.active) !== 1) throw new ApiError(400, "Este cupón está desactivado."); // "คูปองนี้ถูกปิดใช้งาน"
 
         const now = new Date();
-        if (now > new Date(String(coupon.co_datetime_end))) throw new ApiError(400, "คูปองหมดอายุแล้ว");
+        if (now > new Date(String(coupon.co_datetime_end))) throw new ApiError(400, "Este cupón ya expiró."); // "คูปองหมดอายุแล้ว"
 
-        // unique key (co_id, u_id) จะกัน user เก็บคูปองซ้ำ
+        // La unique key (co_id, u_id) evita que el user guarde el cupón duplicado (unique key (co_id, u_id) จะกัน user เก็บคูปองซ้ำ)
         await conn.query(
             "INSERT INTO UserCoupons (co_id, u_id, claimed_at, status) VALUES (?, ?, ?, 'claimed')",
             [coId, uId, now]
@@ -534,7 +534,7 @@ export async function claimCoupon(coId: number, uId: number): Promise<void> {
         await conn.commit();
     } catch (err) {
         await conn.rollback();
-        if (isDupError(err)) throw new ApiError(409, "คุณเก็บคูปองนี้แล้ว");
+        if (isDupError(err)) throw new ApiError(409, "Ya guardaste este cupón."); // "คุณเก็บคูปองนี้แล้ว"
         throw err;
     } finally {
         conn.release();
@@ -586,7 +586,7 @@ export async function validateCouponForCheckout(
     conn: PoolConnection,
     input: ValidateCouponInput
 ): Promise<ValidateCouponResult> {
-    // ใช้ connection เดียวกับ order transaction และ lock coupon row ระหว่าง checkout
+    // Usa la misma connection que la transacción del order y bloquea la row del cupón durante el checkout (ใช้ connection เดียวกับ order transaction และ lock coupon row ระหว่าง checkout)
     return validateCouponWithConnection(conn, input, true);
 }
 
@@ -602,12 +602,12 @@ export async function redeemCoupon(input: RedeemCouponInput): Promise<void> {
         );
 
         const coupon = couponRows[0];
-        if (!coupon) throw new ApiError(404, "ไม่พบคูปอง");
+        if (!coupon) throw new ApiError(404, "No se encontró el cupón."); // "ไม่พบคูปอง"
         const usageLimitTotal = coupon.usage_limit_total === null ? null : Number(coupon.usage_limit_total);
 
-        // เช็ก limit ซ้ำตอน redeem เพราะ validate กับ redeem อาจเกิดคนละช่วงเวลา
+        // Vuelve a revisar el límite al redimir, porque validate y redeem pueden ocurrir en momentos distintos (เช็ก limit ซ้ำตอน redeem เพราะ validate กับ redeem อาจเกิดคนละช่วงเวลา)
         if (usageLimitTotal !== null && Number(coupon.used_count) >= usageLimitTotal) {
-            throw new ApiError(400, "คูปองถูกใช้ครบจำนวนแล้ว");
+            throw new ApiError(400, "Este cupón ya alcanzó su límite de uso."); // "คูปองถูกใช้ครบจำนวนแล้ว"
         }
 
         await conn.query(
@@ -648,7 +648,7 @@ export async function redeemCoupon(input: RedeemCouponInput): Promise<void> {
         await conn.commit();
     } catch (err) {
         await conn.rollback();
-        if (isDupError(err)) throw new ApiError(409, "คูปองนี้ถูกใช้กับคำสั่งซื้อนี้แล้ว");
+        if (isDupError(err)) throw new ApiError(409, "Este cupón ya se usó con esta orden."); // "คูปองนี้ถูกใช้กับคำสั่งซื้อนี้แล้ว"
         throw err;
     } finally {
         conn.release();
@@ -665,12 +665,12 @@ export async function redeemCouponForCheckout(
     );
 
     const coupon = couponRows[0];
-    if (!coupon) throw new ApiError(404, "ไม่พบคูปอง");
+    if (!coupon) throw new ApiError(404, "No se encontró el cupón."); // "ไม่พบคูปอง"
     const usageLimitTotal = coupon.usage_limit_total === null ? null : Number(coupon.usage_limit_total);
 
-    // ฟังก์ชันนี้ไม่ begin/commit เอง เพราะถูกเรียกอยู่ใน order transaction
+    // Esta función no hace begin/commit por sí misma, porque se llama dentro de la transacción del order (ฟังก์ชันนี้ไม่ begin/commit เอง เพราะถูกเรียกอยู่ใน order transaction)
     if (usageLimitTotal !== null && Number(coupon.used_count) >= usageLimitTotal) {
-        throw new ApiError(400, "คูปองถูกใช้ครบจำนวนแล้ว");
+        throw new ApiError(400, "Este cupón ya alcanzó su límite de uso."); // "คูปองถูกใช้ครบจำนวนแล้ว"
     }
 
     await conn.query(
