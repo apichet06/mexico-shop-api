@@ -95,11 +95,16 @@ export async function ensureOrderShipmentTables(): Promise<void> {
                 or_id INT NOT NULL,
                 loc_id INT NOT NULL,
                 shipment_no VARCHAR(80) NOT NULL,
+                attempt_no INT UNSIGNED NOT NULL DEFAULT 1,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
                 status VARCHAR(40) NOT NULL DEFAULT 'planned',
                 tracking_no VARCHAR(120) NULL,
                 tracking_url TEXT NULL,
                 label_url TEXT NULL,
                 provider_shipment_id VARCHAR(80) NULL,
+                estimated_delivery_days SMALLINT UNSIGNED NULL,
+                canceled_at DATETIME NULL,
+                failure_reason TEXT NULL,
                 sender_name VARCHAR(255) NOT NULL,
                 sender_phone VARCHAR(60) NULL,
                 sender_email VARCHAR(255) NULL,
@@ -118,7 +123,7 @@ export async function ensureOrderShipmentTables(): Promise<void> {
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 PRIMARY KEY (os_id),
-                UNIQUE KEY uq_order_shipments_order_location (or_id, loc_id),
+                UNIQUE KEY uq_order_shipment_attempt (or_id, loc_id, attempt_no),
                 KEY idx_order_shipments_order (or_id),
                 KEY idx_order_shipments_location (loc_id)
             )
@@ -126,10 +131,38 @@ export async function ensureOrderShipmentTables(): Promise<void> {
         const [shipmentColumns] = await pool.query<(RowDataPacket & { COLUMN_NAME: string })[]>(
             `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Order_shipments'
-               AND COLUMN_NAME = 'provider_shipment_id'`
+               AND COLUMN_NAME IN ('provider_shipment_id', 'estimated_delivery_days', 'attempt_no', 'is_active', 'canceled_at', 'failure_reason')`
         );
-        if (!shipmentColumns.length) {
+        const shipmentColumnNames = new Set(shipmentColumns.map((column) => column.COLUMN_NAME));
+        if (!shipmentColumnNames.has("provider_shipment_id")) {
             await pool.query("ALTER TABLE Order_shipments ADD COLUMN provider_shipment_id VARCHAR(80) NULL AFTER label_url");
+        }
+        if (!shipmentColumnNames.has("estimated_delivery_days")) {
+            await pool.query("ALTER TABLE Order_shipments ADD COLUMN estimated_delivery_days SMALLINT UNSIGNED NULL AFTER provider_shipment_id");
+        }
+        if (!shipmentColumnNames.has("attempt_no")) {
+            await pool.query("ALTER TABLE Order_shipments ADD COLUMN attempt_no INT UNSIGNED NOT NULL DEFAULT 1 AFTER shipment_no");
+        }
+        if (!shipmentColumnNames.has("is_active")) {
+            await pool.query("ALTER TABLE Order_shipments ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER attempt_no");
+        }
+        if (!shipmentColumnNames.has("canceled_at")) {
+            await pool.query("ALTER TABLE Order_shipments ADD COLUMN canceled_at DATETIME NULL AFTER estimated_delivery_days");
+        }
+        if (!shipmentColumnNames.has("failure_reason")) {
+            await pool.query("ALTER TABLE Order_shipments ADD COLUMN failure_reason TEXT NULL AFTER canceled_at");
+        }
+        const [shipmentIndexes] = await pool.query<(RowDataPacket & { INDEX_NAME: string })[]>(
+            `SELECT DISTINCT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Order_shipments'
+               AND INDEX_NAME IN ('uq_order_shipments_order_location', 'uq_order_shipment_attempt')`
+        );
+        const shipmentIndexNames = new Set(shipmentIndexes.map((index) => index.INDEX_NAME));
+        if (shipmentIndexNames.has("uq_order_shipments_order_location")) {
+            await pool.query("ALTER TABLE Order_shipments DROP INDEX uq_order_shipments_order_location");
+        }
+        if (!shipmentIndexNames.has("uq_order_shipment_attempt")) {
+            await pool.query("ALTER TABLE Order_shipments ADD UNIQUE KEY uq_order_shipment_attempt (or_id, loc_id, attempt_no)");
         }
 
         await pool.query(`

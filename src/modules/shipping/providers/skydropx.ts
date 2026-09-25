@@ -22,6 +22,7 @@ export type SkydropxQuoteResult = {
   courierCode: string;
   courierName: string | null;
   serviceName: string | null;
+  estimatedDeliveryDays: number | null;
   price: number;
   raw: unknown;
 };
@@ -32,8 +33,9 @@ export type SkydropxShipmentResult = {
   courierTrackingCode: string | null;
   courierCode: string;
   shipmentStatus: string;
-  trackingUrl: string;
+  trackingUrl: string | null;
   labelUrl: string | null;
+  estimatedDeliveryDays: number | null;
   raw: unknown;
 };
 
@@ -49,11 +51,22 @@ export function mapSkydropxShipmentStatus(orderStatus: string | null, states: Sh
   const latestState = [...states].sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime())[0];
   const code = latestState?.status?.toLowerCase() ?? "";
   const order = orderStatus?.toLowerCase() ?? "";
+  const detail = `${code} ${order} ${latestState?.description?.toLowerCase() ?? ""}`;
+  const matches = (values: string[]) => values.includes(code) || values.includes(order);
+  if (
+    matches(["recipient_refused", "refused", "refused_by_recipient", "rejected_by_recipient"])
+    || /recipient\s+(refused|rejected)|refused\s+by\s+(the\s+)?recipient|destinatario\s+(rechaz[oó]|rehus[oó])|rechazo\s+del\s+destinatario/.test(detail)
+  ) return "recipient_refused";
+  if (
+    matches(["return_to_sender", "returning_to_sender", "in_return"])
+    || /return(ing)?\s+to\s+sender|devoluci[oó]n\s+al\s+remitente|retorno\s+a(l\s+)?origen/.test(detail)
+  ) return "return_to_sender";
+  if (matches(["returned_to_sender", "return_delivered"])) return "returned_to_sender";
   if (["delivered", "complete", "completed"].includes(order) || code === "delivered") return "delivered";
   if (["created", "label_created"].includes(order)) return "label_created";
   if (["last_mile", "delivery_attempt", "delivered_to_branch"].includes(code)) return "out_for_delivery";
   if (code === "picked_up") return "picked_up";
-  if (["exception", "canceled", "in_return", "retained"].includes(code)) return code;
+  if (["exception", "canceled", "retained"].includes(code)) return code;
   if (order === "in_transit" || states.length > 0) return "in_transit";
   return null;
 }
@@ -234,6 +247,10 @@ function parseRates(raw: unknown, fallbackQuotationId: string): SkydropxQuoteRes
       courierCode: code,
       courierName: stringValue(source.provider_display_name, providerName),
       serviceName: stringValue(source.provider_service_name, source.service_name, source.provider_service_code),
+      estimatedDeliveryDays: (() => {
+        const days = numberValue(source.days);
+        return days != null && days >= 0 ? Math.ceil(days) : null;
+      })(),
       price,
       raw: row,
     });
@@ -277,6 +294,7 @@ function mockQuote(input: SkydropxQuoteInput): SkydropxQuoteResult[] {
       courierCode: carrier,
       courierName: carrier.replace(/_/g, " "),
       serviceName: "Standard",
+      estimatedDeliveryDays: 2,
       price,
       raw: { mock: true },
     };
@@ -345,6 +363,7 @@ function mockShipment(input: CreateShippingShipmentInput): SkydropxShipmentResul
     shipmentStatus: "label_created",
     trackingUrl: `https://www.skydropx.com/rastreo/?tracking_number=${encodeURIComponent(tracking)}`,
     labelUrl: null,
+    estimatedDeliveryDays: 2,
     raw: { mock: true, note: "SKYDROPX_MOCK=true; no se compró ninguna guía" },
   };
 }
@@ -408,17 +427,41 @@ export async function createSkydropxShipment(input: CreateShippingShipmentInput)
       // Skydropx may not expose the newly accepted shipment immediately.
     }
   }
-  if (!tracking) throw new ApiError(502, "Skydropx ya recibió la solicitud de creación del shipment, pero el número de tracking aún no está listo. Revisa el shipment en Skydropx antes de intentar crearlo de nuevo.", { provider: "skydropx", providerShipmentId, raw }); // "Skydropx รับคำขอสร้าง shipment แล้ว แต่เลข tracking ยังไม่พร้อม กรุณาตรวจ shipment ใน Skydropx ก่อนลองสร้างซ้ำ"
+  if (!providerShipmentId && !tracking) {
+    throw new ApiError(502, "Skydropx no devolvió un identificador para el shipment creado.", { provider: "skydropx", raw });
+  }
 
   return {
     purchaseId: null,
-    providerShipmentId: providerShipmentId ?? tracking,
+    providerShipmentId: providerShipmentId ?? tracking!,
     courierTrackingCode: tracking,
     courierCode: rate.courierCode,
-    shipmentStatus: stringValue(attrs.workflow_status, shipment.status, attrs.status) ?? "label_created",
+    shipmentStatus: stringValue(attrs.workflow_status, shipment.status, attrs.status) ?? (tracking ? "label_created" : "creating"),
     trackingUrl: stringValue(parcelAttrs.tracking_url_provider, attrs.tracking_url_provider)
-      ?? `https://www.skydropx.com/rastreo/?tracking_number=${encodeURIComponent(tracking)}`,
+      ?? (tracking ? `https://www.skydropx.com/rastreo/?tracking_number=${encodeURIComponent(tracking)}` : null),
     labelUrl: shipmentLabelUrl(shipment, parcel),
+    estimatedDeliveryDays: rate.estimatedDeliveryDays,
+    raw,
+  };
+}
+
+export async function getSkydropxShipment(providerShipmentId: string, courierCode = ""): Promise<SkydropxShipmentResult> {
+  const raw = await requestSkydropx(`/api/v1/shipments/${encodeURIComponent(providerShipmentId)}`);
+  const { shipment, parcel } = findShipment(raw);
+  const attrs = record(shipment.attributes);
+  const parcelAttrs = record(parcel.attributes);
+  const tracking = stringValue(attrs.master_tracking_number, shipment.tracking_number, attrs.tracking_number, parcel.tracking_number, parcelAttrs.tracking_number);
+
+  return {
+    purchaseId: null,
+    providerShipmentId: stringValue(shipment.id, attrs.id) ?? providerShipmentId,
+    courierTrackingCode: tracking,
+    courierCode,
+    shipmentStatus: stringValue(attrs.workflow_status, shipment.status, attrs.status) ?? (tracking ? "label_created" : "creating"),
+    trackingUrl: stringValue(parcelAttrs.tracking_url_provider, attrs.tracking_url_provider)
+      ?? (tracking ? `https://www.skydropx.com/rastreo/?tracking_number=${encodeURIComponent(tracking)}` : null),
+    labelUrl: shipmentLabelUrl(shipment, parcel),
+    estimatedDeliveryDays: null,
     raw,
   };
 }

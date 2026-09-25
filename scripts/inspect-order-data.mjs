@@ -111,7 +111,7 @@ if (available.has("Shipping_carriers")) {
   for (const carrier of carriers) console.log(JSON.stringify(carrier));
 }
 
-const preservedTables = ["Products", "ProductVariants", "Users", "Store", "Addresses", "Inventorys", "Coupon", "Payout_settings"];
+const preservedTables = ["Products", "ProductVariants", "Users", "Store", "Inventorys", "Coupon"];
 console.log("PRESERVED_COUNTS");
 for (const tableName of preservedTables.filter((name) => available.has(name))) {
   const [rows] = await pool.query(`SELECT COUNT(*) AS count FROM \`${tableName}\``);

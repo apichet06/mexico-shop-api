@@ -25,12 +25,22 @@ export function verifySkydropxWebhook(authorization: string | undefined) {
   return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
 }
 
-function mapStatus(status: string) {
+function mapStatus(status: string, description = "") {
   const normalized = status.toLowerCase();
+  const detail = `${normalized} ${description.toLowerCase()}`;
+  if (
+    ["recipient_refused", "refused", "refused_by_recipient", "rejected_by_recipient"].includes(normalized)
+    || /recipient\s+(refused|rejected)|refused\s+by\s+(the\s+)?recipient|destinatario\s+(rechaz[oó]|rehus[oó])|rechazo\s+del\s+destinatario/.test(detail)
+  ) return "recipient_refused";
+  if (
+    ["return_to_sender", "returning_to_sender", "in_return"].includes(normalized)
+    || /return(ing)?\s+to\s+sender|devoluci[oó]n\s+al\s+remitente|retorno\s+a(l\s+)?origen/.test(detail)
+  ) return "return_to_sender";
+  if (["returned_to_sender", "return_delivered"].includes(normalized)) return "returned_to_sender";
   if (normalized === "delivered") return "delivered";
   if (["last_mile", "delivery_attempt", "delivered_to_branch"].includes(normalized)) return "out_for_delivery";
   if (normalized === "picked_up") return "picked_up";
-  if (["in_transit", "exception", "in_return", "retained"].includes(normalized)) return normalized;
+  if (["in_transit", "exception", "retained"].includes(normalized)) return normalized;
   if (["created", "label_created"].includes(normalized)) return "label_created";
   if (["canceled", "cancelled", "destroyed"].includes(normalized)) return "canceled";
   return normalized || "label_created";
@@ -42,8 +52,9 @@ export async function handleSkydropxWebhook(payload: unknown) {
   const data = record(root.data);
   const attrs = record(data.attributes);
   const trackingNo = text(attrs.tracking_number, data.tracking_number);
+  const providerShipmentId = text(attrs.shipment_id, data.id, root.shipment_id);
   const status = text(attrs.returned_status, attrs.status, data.status);
-  if (!trackingNo || !status) return { matched: false };
+  if ((!trackingNo && !providerShipmentId) || !status) return { matched: false };
 
   const [rows] = await pool.query<(RowDataPacket & {
     os_id: number;
@@ -51,13 +62,15 @@ export async function handleSkydropxWebhook(payload: unknown) {
     st_id: number;
     u_id: number | null;
     order_no: string;
+    is_active: number;
   })[]>(
-    `SELECT osh.os_id, osh.or_id, o.st_id, o.u_id, o.order_no
+    `SELECT osh.os_id, osh.or_id, osh.is_active, o.st_id, o.u_id, o.order_no
      FROM Order_shipments osh
      INNER JOIN Orders o ON o.or_id = osh.or_id
-     WHERE osh.tracking_no = ?
+     WHERE (? IS NOT NULL AND osh.tracking_no = ?)
+        OR (? IS NOT NULL AND osh.provider_shipment_id = ?)
      LIMIT 1`,
-    [trackingNo]
+    [trackingNo, trackingNo, providerShipmentId, providerShipmentId]
   );
   const shipment = rows[0];
   if (!shipment) return { matched: false };
@@ -66,9 +79,10 @@ export async function handleSkydropxWebhook(payload: unknown) {
   const occurredAt = occurredAtRaw && !Number.isNaN(new Date(occurredAtRaw).getTime())
     ? new Date(occurredAtRaw)
     : new Date();
-  const internalStatus = mapStatus(status);
+  const providerDescription = text(attrs.description, attrs.message) ?? status;
+  const internalStatus = mapStatus(status, providerDescription);
   const eventHash = crypto.createHash("sha256")
-    .update([shipment.os_id, trackingNo, status, occurredAt.toISOString()].join("|"))
+    .update([shipment.os_id, trackingNo ?? providerShipmentId, status, occurredAt.toISOString()].join("|"))
     .digest("hex");
 
   await pool.query(
@@ -79,10 +93,10 @@ export async function handleSkydropxWebhook(payload: unknown) {
     [
       shipment.os_id,
       shipment.or_id,
-      trackingNo,
+      trackingNo ?? providerShipmentId,
       trackingNo,
       status,
-      text(attrs.description, attrs.message) ?? status,
+      providerDescription,
       text(attrs.description, attrs.message),
       text(attrs.location),
       occurredAt,
@@ -93,23 +107,39 @@ export async function handleSkydropxWebhook(payload: unknown) {
   await pool.query(
     `UPDATE Order_shipments
      SET status = ?,
+         tracking_no = COALESCE(?, tracking_no),
          tracking_url = COALESCE(?, tracking_url),
          label_url = COALESCE(?, label_url),
+         canceled_at = CASE WHEN ? = 'canceled' THEN ? ELSE canceled_at END,
+         failure_reason = CASE WHEN ? IN ('canceled', 'recipient_refused', 'return_to_sender', 'returned_to_sender') THEN ? ELSE failure_reason END,
          updated_at = CURRENT_TIMESTAMP
      WHERE os_id = ?`,
-    [internalStatus, text(attrs.tracking_url_provider), text(attrs.label_url), shipment.os_id]
+    [
+      internalStatus,
+      trackingNo,
+      text(attrs.tracking_url_provider),
+      text(attrs.label_url),
+      internalStatus,
+      occurredAt,
+      internalStatus,
+      providerDescription,
+      shipment.os_id,
+    ]
   );
-  await pool.query(
-    `UPDATE Orders
-     SET shipment_status = ?,
-         tracking_url = COALESCE(?, tracking_url),
-         label_url = COALESCE(?, label_url),
-         update_at = CURRENT_TIMESTAMP
-     WHERE or_id = ?`,
-    [internalStatus, text(attrs.tracking_url_provider), text(attrs.label_url), shipment.or_id]
-  );
+  if (Number(shipment.is_active) === 1) {
+    await pool.query(
+      `UPDATE Orders
+       SET shipment_status = ?,
+           tracking_no = COALESCE(?, tracking_no),
+           tracking_url = COALESCE(?, tracking_url),
+           label_url = COALESCE(?, label_url),
+           update_at = CURRENT_TIMESTAMP
+       WHERE or_id = ?`,
+      [internalStatus, trackingNo, text(attrs.tracking_url_provider), text(attrs.label_url), shipment.or_id]
+    );
+  }
 
-  if (internalStatus === "delivered") {
+  if (internalStatus === "delivered" && Number(shipment.is_active) === 1) {
     await pool.query(
       `UPDATE Orders o
        LEFT JOIN Status current_status ON current_status.s_id = o.s_id
@@ -120,6 +150,12 @@ export async function handleSkydropxWebhook(payload: unknown) {
            ('CANCELLED', 'REFUNDED', 'RETURN_REQUESTED', 'RETURN_REQUESTED_COMPLETED', 'RECEIVED', 'AUTO_RECEIVED', 'REVIEWED'))`,
       [shipment.or_id]
     );
+  }
+
+  // Keep late events from an old attempt as history, but do not push them as
+  // the current order state after a replacement shipment is active.
+  if (Number(shipment.is_active) !== 1) {
+    return { matched: true, or_id: shipment.or_id };
   }
 
   try {

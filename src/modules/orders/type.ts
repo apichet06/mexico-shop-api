@@ -91,10 +91,16 @@ export type OrderShipmentDTO = {
     or_id: number;
     loc_id: number;
     shipment_no: string;
+    attempt_no: number;
+    is_active: number | boolean;
     status: string;
     tracking_no?: string | null;
     tracking_url?: string | null;
     label_url?: string | null;
+    estimated_delivery_days?: number | null;
+    canceled_at?: string | null;
+    failure_reason?: string | null;
+    has_handover?: number | boolean;
     sender_name: string;
     sender_phone?: string | null;
     sender_email?: string | null;
@@ -148,6 +154,7 @@ export type OrderDTO = {
     label_url?: string | null;
     tracking_url_template?: string | null;
     shipment_status?: string | null;
+    estimated_delivery_days?: number | null;
     shipment_events?: ShipmentEventDTO[];
     grand_total: number;
     coupon_code: string | null;
@@ -231,6 +238,8 @@ export type AdminSalesByProductRowDTO = {
     order_count: number;
     qty_sold: number;
     gross_sales: number;
+    item_discount_total: number;
+    coupon_discount_total: number;
     discount_total: number;
     net_sales: number;
     average_unit_price: number;
@@ -241,6 +250,8 @@ export type AdminSalesByProductSummaryDTO = {
     order_count: number;
     qty_sold: number;
     gross_sales: number;
+    item_discount_total: number;
+    coupon_discount_total: number;
     discount_total: number;
     net_sales: number;
 };
@@ -258,6 +269,8 @@ export type AdminSalesByCategoryRowDTO = {
     product_count: number;
     qty_sold: number;
     gross_sales: number;
+    item_discount_total: number;
+    coupon_discount_total: number;
     discount_total: number;
     net_sales: number;
     average_unit_price: number;
@@ -269,6 +282,8 @@ export type AdminSalesByCategorySummaryDTO = {
     product_count: number;
     qty_sold: number;
     gross_sales: number;
+    item_discount_total: number;
+    coupon_discount_total: number;
     discount_total: number;
     net_sales: number;
 };

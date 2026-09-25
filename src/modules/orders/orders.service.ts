@@ -10,6 +10,7 @@ import { chargeAndRecordPayment, createConektaRefund, ensureConektaPaymentSchema
 import type { PaymentResultDTO } from "../payments/payment.type.js";
 import {
     createSkydropxShipment,
+    getSkydropxShipment,
     getSkydropxShipmentLabel,
     getSkydropxTracking,
     mapSkydropxShipmentStatus,
@@ -52,6 +53,37 @@ const ADMIN_STATUS_TRANSITIONS: Record<string, OrderStatusCode> = {
 };
 
 let autoReceiveJobStarted = false;
+
+// Distribuye el descuento de cupón del pedido entre las líneas elegibles según su total neto.
+// Si el cupón está limitado por CouponProducts, las líneas no elegibles no reciben descuento.
+const couponAllocationJoinSql = `
+    LEFT JOIN (
+        SELECT
+            eligible.oi_id,
+            COALESCE(eligible.discount_total, 0) * eligible.line_total
+                / NULLIF(eligible.applicable_subtotal, 0) AS coupon_discount_amount
+        FROM (
+            SELECT
+                oi_coupon.oi_id,
+                oi_coupon.line_total,
+                o_coupon.discount_total,
+                SUM(oi_coupon.line_total) OVER (PARTITION BY oi_coupon.or_id) AS applicable_subtotal
+            FROM Order_items oi_coupon
+            INNER JOIN Orders o_coupon ON o_coupon.or_id = oi_coupon.or_id
+            WHERE COALESCE(o_coupon.discount_total, 0) > 0
+              AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM CouponProducts cp_any
+                        WHERE cp_any.co_id = o_coupon.co_id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM CouponProducts cp_match
+                        WHERE cp_match.co_id = o_coupon.co_id
+                          AND cp_match.p_id = oi_coupon.p_id
+                    )
+              )
+        ) eligible
+    ) coupon_alloc ON coupon_alloc.oi_id = oi.oi_id`;
 
 // Redondea el monto a 2 decimales; se usa al calcular totales de order/shipping/discount (ปัดเศษจำนวนเงินให้เหลือ 2 ตำแหน่ง ใช้ตอนคำนวณยอด order/shipping/discount)
 function roundMoney(value: number): number {
@@ -144,6 +176,7 @@ const orderSelectSql = `
         o.label_url,
         sc.tracking_url_template,
         o.shipment_status,
+        (SELECT MAX(osh.estimated_delivery_days) FROM Order_shipments osh WHERE osh.or_id = o.or_id AND osh.is_active = 1) AS estimated_delivery_days,
         o.grand_total,
         o.coupon_code,
         o.shipping_name,
@@ -231,6 +264,7 @@ type OrderNotificationEvent =
     | "order:paid"
     | "order:status_updated"
     | "order:tracking_updated"
+    | "order:shipment_replaced"
     | "order:refund_requested"
     | "order:refund_approved"
     | "order:refund_rejected"
@@ -604,16 +638,14 @@ function getProviderTrackingCodesFromShipment(shipment: Pick<OrderShipmentDTO, "
     return [...new Set(codes.map((code) => code.trim()).filter(Boolean))];
 }
 
-// Convierte la description de la paquetería en un title corto para mostrar en el timeline (แปลง description จากขนส่งให้เป็น title สั้นสำหรับแสดงใน timeline)
+// Conserva el mensaje de la paquetería sin traducirlo ni reinterpretarlo.
+// (เก็บข้อความจากขนส่งตามต้นฉบับ ไม่แปลหรือแยกความหมายใหม่)
 function shipmentEventTitle(description: string) {
-    const parts = description.split(",").map((part) => part.trim()).filter(Boolean);
-    return parts.length > 1 ? parts[parts.length - 1] : description;
+    return description.trim();
 }
 
-// Separa el detalle adicional de la description de la paquetería, si tiene varias partes (แยกรายละเอียดเสริมจาก description ของขนส่ง ถ้ามีหลายส่วน)
-function shipmentEventDescription(description: string) {
-    const parts = description.split(",").map((part) => part.trim()).filter(Boolean);
-    return parts.length > 1 ? parts[0] : null;
+function shipmentEventDescription(_description: string) {
+    return null;
 }
 
 // Genera un hash para evitar guardar shipment events duplicados a partir de los mismos datos de tracking (สร้าง hash กันบันทึก shipment event ซ้ำจากข้อมูล tracking เดิม)
@@ -638,6 +670,7 @@ async function syncShipmentEventsFromProvider(orderIds: number[]): Promise<Map<n
          INNER JOIN Orders o ON o.or_id = osh.or_id
          LEFT JOIN Shipping_carriers sc ON sc.sc_id = o.shipping_sc_id
          WHERE osh.or_id IN (?)
+           AND osh.is_active = 1
            AND (osh.tracking_no IS NOT NULL OR osh.tracking_url IS NOT NULL)
          ORDER BY osh.os_id ASC`,
         [orderIds]
@@ -690,9 +723,12 @@ async function syncShipmentEventsFromProvider(orderIds: number[]): Promise<Map<n
 
                     await pool.query(
                         `UPDATE Order_shipments
-                         SET status = ?, updated_at = CURRENT_TIMESTAMP
+                         SET status = ?,
+                             canceled_at = CASE WHEN ? = 'canceled' THEN CURRENT_TIMESTAMP ELSE canceled_at END,
+                             failure_reason = CASE WHEN ? IN ('canceled', 'recipient_refused', 'return_to_sender', 'returned_to_sender') THEN ? ELSE failure_reason END,
+                             updated_at = CURRENT_TIMESTAMP
                          WHERE os_id = ?`,
-                        [mappedStatus, shipment.os_id]
+                        [mappedStatus, mappedStatus, mappedStatus, tracking.states.find((state) => state.description)?.description ?? mappedStatus, shipment.os_id]
                     );
 
                     await pool.query(
@@ -746,13 +782,7 @@ async function getShipmentEvents(orderIds: number[]): Promise<Map<number, Shipme
             ose.location,
             ose.occurred_at
          FROM Order_shipment_events ose
-         INNER JOIN (
-            SELECT or_id, MAX(os_id) AS os_id
-            FROM Order_shipments
-            WHERE or_id IN (?)
-            GROUP BY or_id
-         ) latest_shipment ON latest_shipment.os_id = ose.os_id
-         INNER JOIN Order_shipments os ON os.os_id = latest_shipment.os_id
+         INNER JOIN Order_shipments os ON os.os_id = ose.os_id
          WHERE ose.or_id IN (?)
            AND (
                 os.tracking_no IS NULL
@@ -762,7 +792,7 @@ async function getShipmentEvents(orderIds: number[]): Promise<Map<number, Shipme
                 OR (ose.courier_tracking_code IS NOT NULL AND os.tracking_url LIKE CONCAT('%', ose.courier_tracking_code, '%'))
            )
          ORDER BY ose.occurred_at DESC, ose.ose_id DESC`,
-        [orderIds, orderIds]
+        [orderIds]
     );
 
     for (const row of rows) {
@@ -814,10 +844,22 @@ async function getOrderShipments(orderIds: number[]): Promise<Map<number, OrderS
             os.or_id,
             os.loc_id,
             os.shipment_no,
+            os.attempt_no,
+            os.is_active,
             os.status,
             os.tracking_no,
             os.tracking_url,
             os.label_url,
+            os.estimated_delivery_days,
+            os.canceled_at,
+            os.failure_reason,
+            EXISTS(
+                SELECT 1 FROM Order_shipment_events handover_event
+                WHERE handover_event.os_id = os.os_id
+                  AND LOWER(COALESCE(handover_event.status, '')) IN
+                    ('picked_up', 'in_transit', 'last_mile', 'out_for_delivery', 'delivered',
+                     'recipient_refused', 'refused', 'return_to_sender', 'in_return', 'returned_to_sender')
+            ) AS has_handover,
             os.sender_name,
             os.sender_phone,
             os.sender_email,
@@ -1618,6 +1660,7 @@ export async function checkoutOrder(input: CheckoutOrderInput): Promise<{ orders
 // Obtiene la lista de orders del buyer junto con items y shipment events para la página 'Mis compras' (ดึงรายการ order ของ buyer พร้อม items และ shipment events สำหรับหน้า "การซื้อของฉัน")
 export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO & { item_count: number; items: OrderItemDTO[] })[]> {
     await ensureOrderShipmentLabelColumn();
+    await ensureOrderShipmentTables();
 
     const [rows] = await pool.query<(RowDataPacket & OrderDTO & { item_count: number })[]>(
         `SELECT
@@ -1640,6 +1683,7 @@ export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO
             o.label_url,
             sc.tracking_url_template,
             o.shipment_status,
+            (SELECT MAX(osh.estimated_delivery_days) FROM Order_shipments osh WHERE osh.or_id = o.or_id AND osh.is_active = 1) AS estimated_delivery_days,
             o.grand_total, o.coupon_code,
             o.shipping_name, o.shipping_phone, o.shipping_address,
             lb.zip_code AS shipping_zip_code,
@@ -1709,6 +1753,7 @@ export async function getOrders(u_id: number, lg_code = "es"): Promise<(OrderDTO
 // Obtiene la lista de orders del lado tienda/backoffice según la tienda con la que se inició sesión (ดึงรายการ order ฝั่งร้าน/backoffice ตามร้านที่ login อยู่)
 export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<AdminOrderDTO[]> {
     await ensureOrderShipmentLabelColumn();
+    await ensureOrderShipmentTables();
     await ensureRefundMethodColumn();
     await ensureConektaPaymentSchema();
 
@@ -1746,6 +1791,7 @@ export async function adminGetOrders(st_id: number, lg_code = "es"): Promise<Adm
             o.label_url,
             sc.tracking_url_template,
             o.shipment_status,
+            (SELECT MAX(osh.estimated_delivery_days) FROM Order_shipments osh WHERE osh.or_id = o.or_id AND osh.is_active = 1) AS estimated_delivery_days,
             o.grand_total, o.coupon_code,
             o.shipping_name, o.shipping_phone, o.shipping_address,
             lb.zip_code AS shipping_zip_code,
@@ -1798,8 +1844,15 @@ export async function adminGetOrderSummary(st_id: number): Promise<AdminOrderSum
         `SELECT
             COALESCE(SUM(CASE
                 WHEN DATE(o.created_at) = CURDATE()
-                     AND os.s_code IN ('CONFIRMED', 'PROCESSING', 'PACKED', 'READY_TO_SHIP')
-                THEN o.grand_total ELSE 0
+                     AND EXISTS (
+                         SELECT 1
+                         FROM Payment_orders today_po
+                         INNER JOIN Payments today_p ON today_p.pay_id = today_po.pay_id
+                         WHERE today_po.or_id = o.or_id
+                           AND today_p.payment_status = 'paid'
+                     )
+                THEN GREATEST(o.grand_total - COALESCE(refund.refund_total, 0), 0)
+                ELSE 0
             END), 0) AS today_sales,
             COALESCE(SUM(CASE WHEN DATE(o.created_at) = CURDATE() THEN 1 ELSE 0 END), 0) AS new_orders,
             COALESCE(SUM(CASE WHEN os.s_code = 'CONFIRMED' THEN 1 ELSE 0 END), 0) AS pending_orders,
@@ -1808,6 +1861,12 @@ export async function adminGetOrderSummary(st_id: number): Promise<AdminOrderSum
             COALESCE(SUM(o.discount_total), 0) AS coupon_discount_total
         FROM Orders o
         LEFT JOIN Status os ON os.s_id = o.s_id
+        LEFT JOIN (
+            SELECT or_id, SUM(amount) AS refund_total
+            FROM Refunds
+            WHERE status = 'succeeded'
+            GROUP BY or_id
+        ) refund ON refund.or_id = o.or_id
         ${storeSql ? "WHERE o.st_id = ?" : ""}`,
         params
     );
@@ -1874,7 +1933,10 @@ export async function adminGetSalesReport(
                 or_id,
                 COUNT(oi_id) AS item_count,
                 SUM(unit_price * qty) AS item_gross_total,
-                SUM(discount_amount * qty) AS item_discount_total
+                SUM(GREATEST(
+                    (unit_price * qty) - COALESCE(line_total, (unit_price - discount_amount) * qty),
+                    0
+                )) AS item_discount_total
             FROM Order_items
             GROUP BY or_id
         ) item_summary ON item_summary.or_id = o.or_id
@@ -1997,11 +2059,36 @@ export async function adminGetSalesByProductReport(
             END) AS order_count,
             SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS qty_sold,
             SUM(oi.unit_price * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS gross_sales,
-            SUM(oi.discount_amount * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS discount_total,
-            SUM(GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)) AS net_sales,
+            SUM(GREATEST(
+                oi.unit_price - (COALESCE(oi.line_total, (oi.unit_price - oi.discount_amount) * oi.qty) / NULLIF(oi.qty, 0)),
+                0
+            ) * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS item_discount_total,
+            SUM(LEAST(
+                COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)
+            )) AS coupon_discount_total,
+            SUM(
+                GREATEST(
+                    oi.unit_price - (COALESCE(oi.line_total, (oi.unit_price - oi.discount_amount) * oi.qty) / NULLIF(oi.qty, 0)),
+                    0
+                ) * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)
+                + LEAST(
+                    COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                    GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)
+                )
+            ) AS discount_total,
+            SUM(GREATEST(
+                oi.line_total - COALESCE(refund_item.refund_amount, 0)
+                - COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                0
+            )) AS net_sales,
             CASE
                 WHEN SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) > 0
-                THEN SUM(GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)) / SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0))
+                THEN SUM(GREATEST(
+                    oi.line_total - COALESCE(refund_item.refund_amount, 0)
+                    - COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                    0
+                )) / SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0))
                 ELSE 0
             END AS average_unit_price
         FROM Order_items oi
@@ -2020,6 +2107,7 @@ export async function adminGetSalesByProductReport(
             WHERE r.status = 'succeeded'
             GROUP BY ri.oi_id
         ) refund_item ON refund_item.oi_id = oi.oi_id
+        ${couponAllocationJoinSql}
         LEFT JOIN (
             SELECT
                 or_id,
@@ -2049,6 +2137,8 @@ export async function adminGetSalesByProductReport(
         order_count: Number(row.order_count ?? 0),
         qty_sold: Number(row.qty_sold ?? 0),
         gross_sales: Number(row.gross_sales ?? 0),
+        item_discount_total: Number(row.item_discount_total ?? 0),
+        coupon_discount_total: Number(row.coupon_discount_total ?? 0),
         discount_total: Number(row.discount_total ?? 0),
         net_sales: Number(row.net_sales ?? 0),
         average_unit_price: Number(row.average_unit_price ?? 0),
@@ -2060,6 +2150,8 @@ export async function adminGetSalesByProductReport(
             total.order_count += row.order_count;
             total.qty_sold += row.qty_sold;
             total.gross_sales += row.gross_sales;
+            total.item_discount_total += row.item_discount_total;
+            total.coupon_discount_total += row.coupon_discount_total;
             total.discount_total += row.discount_total;
             total.net_sales += row.net_sales;
             return total;
@@ -2069,6 +2161,8 @@ export async function adminGetSalesByProductReport(
             order_count: 0,
             qty_sold: 0,
             gross_sales: 0,
+            item_discount_total: 0,
+            coupon_discount_total: 0,
             discount_total: 0,
             net_sales: 0,
         }
@@ -2117,11 +2211,36 @@ export async function adminGetSalesByCategoryReport(
             END) AS product_count,
             SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS qty_sold,
             SUM(oi.unit_price * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS gross_sales,
-            SUM(oi.discount_amount * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS discount_total,
-            SUM(GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)) AS net_sales,
+            SUM(GREATEST(
+                oi.unit_price - (COALESCE(oi.line_total, (oi.unit_price - oi.discount_amount) * oi.qty) / NULLIF(oi.qty, 0)),
+                0
+            ) * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) AS item_discount_total,
+            SUM(LEAST(
+                COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)
+            )) AS coupon_discount_total,
+            SUM(
+                GREATEST(
+                    oi.unit_price - (COALESCE(oi.line_total, (oi.unit_price - oi.discount_amount) * oi.qty) / NULLIF(oi.qty, 0)),
+                    0
+                ) * GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)
+                + LEAST(
+                    COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                    GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)
+                )
+            ) AS discount_total,
+            SUM(GREATEST(
+                oi.line_total - COALESCE(refund_item.refund_amount, 0)
+                - COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                0
+            )) AS net_sales,
             CASE
                 WHEN SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0)) > 0
-                THEN SUM(GREATEST(oi.line_total - COALESCE(refund_item.refund_amount, 0), 0)) / SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0))
+                THEN SUM(GREATEST(
+                    oi.line_total - COALESCE(refund_item.refund_amount, 0)
+                    - COALESCE(coupon_alloc.coupon_discount_amount, 0),
+                    0
+                )) / SUM(GREATEST(oi.qty - COALESCE(refund_item.refund_qty, 0), 0))
                 ELSE 0
             END AS average_unit_price
         FROM Order_items oi
@@ -2141,6 +2260,7 @@ export async function adminGetSalesByCategoryReport(
             WHERE r.status = 'succeeded'
             GROUP BY ri.oi_id
         ) refund_item ON refund_item.oi_id = oi.oi_id
+        ${couponAllocationJoinSql}
         LEFT JOIN (
             SELECT
                 or_id,
@@ -2167,6 +2287,8 @@ export async function adminGetSalesByCategoryReport(
         product_count: Number(row.product_count ?? 0),
         qty_sold: Number(row.qty_sold ?? 0),
         gross_sales: Number(row.gross_sales ?? 0),
+        item_discount_total: Number(row.item_discount_total ?? 0),
+        coupon_discount_total: Number(row.coupon_discount_total ?? 0),
         discount_total: Number(row.discount_total ?? 0),
         net_sales: Number(row.net_sales ?? 0),
         average_unit_price: Number(row.average_unit_price ?? 0),
@@ -2179,6 +2301,8 @@ export async function adminGetSalesByCategoryReport(
             total.product_count += row.product_count;
             total.qty_sold += row.qty_sold;
             total.gross_sales += row.gross_sales;
+            total.item_discount_total += row.item_discount_total;
+            total.coupon_discount_total += row.coupon_discount_total;
             total.discount_total += row.discount_total;
             total.net_sales += row.net_sales;
             return total;
@@ -2189,6 +2313,8 @@ export async function adminGetSalesByCategoryReport(
             product_count: 0,
             qty_sold: 0,
             gross_sales: 0,
+            item_discount_total: 0,
+            coupon_discount_total: 0,
             discount_total: 0,
             net_sales: 0,
         }
@@ -2245,7 +2371,10 @@ export async function adminGetSalesByBuyerReport(
                 or_id,
                 COUNT(oi_id) AS item_count,
                 SUM(unit_price * qty) AS item_gross_total,
-                SUM(discount_amount * qty) AS item_discount_total
+                SUM(GREATEST(
+                    (unit_price * qty) - COALESCE(line_total, (unit_price - discount_amount) * qty),
+                    0
+                )) AS item_discount_total
             FROM Order_items
             GROUP BY or_id
         ) item_summary ON item_summary.or_id = o.or_id
@@ -2331,6 +2460,89 @@ export async function adminGetSalesByBuyerReport(
     return { summary, rows: normalizedRows };
 }
 
+// Completa tracking/label de un shipment ya aceptado por Skydropx sin volver a crear otro shipment.
+async function syncPendingSkydropxShipments(or_id: number, st_id: number): Promise<void> {
+    if (process.env.SKYDROPX_MOCK === "true") return;
+
+    const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
+    const params = st_id === ADMIN_ALL_STORE_ID ? [or_id] : [or_id, st_id];
+    const [pendingRows] = await pool.query<(RowDataPacket & {
+        os_id: number;
+        provider_shipment_id: string;
+        carrier_code: string | null;
+    })[]>(
+        `SELECT osh.os_id, osh.provider_shipment_id, sc.provider_code AS carrier_code
+         FROM Order_shipments osh
+         INNER JOIN Orders o ON o.or_id = osh.or_id
+         LEFT JOIN Shipping_carriers sc ON sc.sc_id = o.shipping_sc_id
+         WHERE osh.or_id = ?
+           AND osh.is_active = 1
+           ${storeSql}
+           AND osh.provider_shipment_id IS NOT NULL
+           AND (osh.tracking_no IS NULL OR osh.label_url IS NULL OR osh.status IN ('creating', 'in_creation', 'queued'))`,
+        params
+    );
+
+    if (!pendingRows.length) return;
+
+    for (const shipment of pendingRows) {
+        try {
+            const result = await getSkydropxShipment(shipment.provider_shipment_id, shipment.carrier_code ?? "");
+            await pool.query(
+                `UPDATE Order_shipments
+                 SET tracking_no = COALESCE(?, tracking_no),
+                     tracking_url = COALESCE(?, tracking_url),
+                     label_url = COALESCE(?, label_url),
+                     status = ?,
+                     canceled_at = CASE WHEN ? IN ('canceled', 'cancelled', 'destroyed') THEN CURRENT_TIMESTAMP ELSE canceled_at END,
+                     failure_reason = CASE WHEN ? IN ('canceled', 'cancelled', 'destroyed') THEN ? ELSE failure_reason END,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE os_id = ?`,
+                [
+                    result.courierTrackingCode,
+                    result.trackingUrl,
+                    result.labelUrl,
+                    result.shipmentStatus,
+                    result.shipmentStatus,
+                    result.shipmentStatus,
+                    result.shipmentStatus,
+                    shipment.os_id,
+                ]
+            );
+        } catch {
+            // Skydropx may still be processing a recently accepted shipment.
+        }
+    }
+
+    const [shipmentRows] = await pool.query<(RowDataPacket & {
+        tracking_no: string | null;
+        tracking_url: string | null;
+        label_url: string | null;
+        status: string;
+    })[]>(
+        `SELECT tracking_no, tracking_url, label_url, status
+         FROM Order_shipments
+         WHERE or_id = ? AND is_active = 1
+         ORDER BY os_id ASC`,
+        [or_id]
+    );
+    const trackingNos = shipmentRows.map((row) => row.tracking_no?.trim()).filter((value): value is string => Boolean(value));
+    const trackingUrl = shipmentRows.find((row) => row.tracking_url)?.tracking_url ?? null;
+    const labelUrl = shipmentRows.find((row) => row.label_url)?.label_url ?? null;
+    const statuses = [...new Set(shipmentRows.map((row) => row.status).filter(Boolean))];
+
+    await pool.query(
+        `UPDATE Orders
+         SET tracking_no = COALESCE(?, tracking_no),
+             tracking_url = COALESCE(?, tracking_url),
+             label_url = COALESCE(?, label_url),
+             shipment_status = ?,
+             update_at = CURRENT_TIMESTAMP
+         WHERE or_id = ?`,
+        [trackingNos.length ? trackingNos.join(", ") : null, trackingUrl, labelUrl, statuses.join(", ") || "creating", or_id]
+    );
+}
+
 // Obtiene el detalle del order del lado tienda, incluyendo items, shipment y las imágenes de evidencia del reembolso (ดึงรายละเอียด order ฝั่งร้าน รวม items, shipment และรูปหลักฐานคืนเงิน)
 export async function adminGetOrderById(or_id: number, st_id: number, lg_code = "es"): Promise<AdminOrderDetailDTO | null> {
     await ensureOrderShipmentLabelColumn();
@@ -2339,6 +2551,8 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
 
     const params = st_id === ADMIN_ALL_STORE_ID ? [or_id] : [or_id, st_id];
     const storeSql = st_id === ADMIN_ALL_STORE_ID ? "" : "AND o.st_id = ?";
+
+    await syncPendingSkydropxShipments(or_id, st_id);
 
     const [orderRows] = await pool.query<(RowDataPacket & AdminOrderDTO)[]>(
         `SELECT
@@ -2364,6 +2578,7 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
             o.label_url,
             sc.tracking_url_template,
             o.shipment_status,
+            (SELECT MAX(osh.estimated_delivery_days) FROM Order_shipments osh WHERE osh.or_id = o.or_id AND osh.is_active = 1) AS estimated_delivery_days,
             o.grand_total, o.coupon_code,
             o.shipping_name, o.shipping_phone, o.shipping_address,
             lb.zip_code AS shipping_zip_code,
@@ -2411,6 +2626,7 @@ export async function adminGetOrderById(or_id: number, st_id: number, lg_code = 
         const [pendingLabels] = await pool.query<(RowDataPacket & { os_id: number; provider_shipment_id: string })[]>(
             `SELECT os_id, provider_shipment_id FROM Order_shipments
              WHERE or_id = ? AND provider_shipment_id IS NOT NULL
+               AND is_active = 1
                AND tracking_no IS NOT NULL AND label_url IS NULL`,
             [or_id]
         );
@@ -3440,8 +3656,6 @@ async function createShipmentForOrder(
         throw new ApiError(400, "El envío solo se puede crear después de cambiar el estado a READY_TO_SHIP.");
     }
     if (!order.shipping_carrier_code) throw new ApiError(400, "Este pedido aún no tiene información de envío.");
-    if (order.tracking_no) throw new ApiError(400, "Este pedido ya tiene un número de guía.");
-
     if (!order.shipping_zip_code) {
         throw new ApiError(400, "Este pedido no tiene código postal del destinatario para crear el envío.");
     }
@@ -3449,6 +3663,8 @@ async function createShipmentForOrder(
     let [shipmentRows] = await conn.query<(RowDataPacket & {
         os_id: number;
         shipment_no: string;
+        attempt_no: number;
+        is_active: number;
         sender_name: string;
         sender_phone: string | null;
         sender_email: string | null;
@@ -3464,10 +3680,17 @@ async function createShipmentForOrder(
         recipient_province_name: string | null;
         recipient_district_name: string | null;
         recipient_subdistrict_name: string | null;
+        provider_shipment_id: string | null;
+        tracking_no: string | null;
+        tracking_url: string | null;
+        label_url: string | null;
+        status: string;
     })[]>(
         `SELECT
             os_id,
             shipment_no,
+            attempt_no,
+            is_active,
             sender_name,
             sender_phone,
             sender_email,
@@ -3482,9 +3705,14 @@ async function createShipmentForOrder(
             recipient_zip_code,
             recipient_province_name,
             recipient_district_name,
-            recipient_subdistrict_name
+            recipient_subdistrict_name,
+            provider_shipment_id,
+            tracking_no,
+            tracking_url,
+            label_url,
+            status
          FROM Order_shipments
-         WHERE or_id = ?
+         WHERE or_id = ? AND is_active = 1
          ORDER BY os_id ASC
          FOR UPDATE`,
         [or_id]
@@ -3496,6 +3724,8 @@ async function createShipmentForOrder(
             `SELECT
                 os_id,
                 shipment_no,
+                attempt_no,
+                is_active,
                 sender_name,
                 sender_phone,
                 sender_email,
@@ -3510,9 +3740,14 @@ async function createShipmentForOrder(
                 recipient_zip_code,
                 recipient_province_name,
                 recipient_district_name,
-                recipient_subdistrict_name
+                recipient_subdistrict_name,
+                provider_shipment_id,
+                tracking_no,
+                tracking_url,
+                label_url,
+                status
              FROM Order_shipments
-             WHERE or_id = ?
+             WHERE or_id = ? AND is_active = 1
              ORDER BY os_id ASC
              FOR UPDATE`,
             [or_id]
@@ -3529,6 +3764,13 @@ async function createShipmentForOrder(
     const statuses: string[] = [];
 
     for (const shipment of shipmentRows) {
+        if (shipment.provider_shipment_id) {
+            if (shipment.tracking_no) trackingNos.push(shipment.tracking_no);
+            if (shipment.tracking_url) trackingUrls.push(shipment.tracking_url);
+            if (shipment.label_url) labelUrls.push(shipment.label_url);
+            statuses.push(shipment.status || "creating");
+            continue;
+        }
         if (!shipment.sender_address || !shipment.sender_zip_code) {
             throw new ApiError(400, `El envío ${shipment.shipment_no} no tiene una dirección de remitente completa`);
         }
@@ -3616,7 +3858,7 @@ async function createShipmentForOrder(
             remark: `Order ${order.order_no} / ${shipment.shipment_no} (${Math.max(totalQty, 1)} items)`,
         });
 
-        const displayTrackingNo = result.courierTrackingCode ?? result.providerShipmentId;
+        const displayTrackingNo = result.courierTrackingCode;
 
         await conn.query(
             `UPDATE Order_shipments
@@ -3624,13 +3866,14 @@ async function createShipmentForOrder(
                  tracking_url = ?,
                  label_url = ?,
                  provider_shipment_id = ?,
+                 estimated_delivery_days = ?,
                  status = ?,
                  updated_at = ?
              WHERE os_id = ?`,
-            [displayTrackingNo, result.trackingUrl, result.labelUrl, result.providerShipmentId, result.shipmentStatus, new Date(), shipment.os_id]
+            [displayTrackingNo, result.trackingUrl, result.labelUrl, result.providerShipmentId, result.estimatedDeliveryDays, result.shipmentStatus, new Date(), shipment.os_id]
         );
 
-        trackingNos.push(displayTrackingNo);
+        if (displayTrackingNo) trackingNos.push(displayTrackingNo);
         if (result.trackingUrl) trackingUrls.push(result.trackingUrl);
         if (result.labelUrl) labelUrls.push(result.labelUrl);
         if (result.shipmentStatus) statuses.push(result.shipmentStatus);
@@ -3654,6 +3897,99 @@ async function createShipmentForOrder(
             or_id,
         ]
     );
+}
+
+// Reemplaza únicamente shipments activos cancelados antes de la entrega al carrier.
+// El intento anterior queda como historial y sus items se copian al nuevo intento.
+async function prepareReplacementShipments(conn: PoolConnection, or_id: number): Promise<number> {
+    const [canceledShipments] = await conn.query<(RowDataPacket & OrderShipmentDTO & { has_handover: number })[]>(
+        `SELECT osh.*,
+                EXISTS(
+                    SELECT 1 FROM Order_shipment_events ose
+                    WHERE ose.os_id = osh.os_id
+                      AND LOWER(COALESCE(ose.status, '')) IN
+                        ('picked_up', 'in_transit', 'last_mile', 'out_for_delivery', 'delivered',
+                         'recipient_refused', 'refused', 'return_to_sender', 'in_return', 'returned_to_sender')
+                ) AS has_handover
+         FROM Order_shipments osh
+         WHERE osh.or_id = ?
+           AND osh.is_active = 1
+           AND LOWER(osh.status) IN ('canceled', 'cancelled', 'destroyed')
+         ORDER BY osh.os_id ASC
+         FOR UPDATE`,
+        [or_id]
+    );
+
+    if (!canceledShipments.length) {
+        throw new ApiError(400, "No hay un shipment cancelado que se pueda reemplazar.");
+    }
+    if (canceledShipments.some((shipment) => Number(shipment.has_handover) === 1)) {
+        throw new ApiError(400, "El transportista ya recibió uno de los paquetes cancelados. Revisa el caso con la paquetería antes de crear otro shipment.");
+    }
+
+    for (const oldShipment of canceledShipments) {
+        const nextAttempt = Number(oldShipment.attempt_no || 1) + 1;
+        const baseShipmentNo = oldShipment.shipment_no.replace(/-A\d+$/i, "");
+
+        await conn.query(
+            `UPDATE Order_shipments
+             SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+             WHERE os_id = ?`,
+            [oldShipment.os_id]
+        );
+
+        const [insertResult] = await conn.query<ResultSetHeader>(
+            `INSERT INTO Order_shipments
+             (or_id, loc_id, shipment_no, attempt_no, is_active, status,
+              sender_name, sender_phone, sender_email, sender_address, sender_zip_code,
+              sender_province_name, sender_district_name, sender_subdistrict_name,
+              recipient_name, recipient_phone, recipient_address, recipient_zip_code,
+              recipient_province_name, recipient_district_name, recipient_subdistrict_name)
+             VALUES (?, ?, ?, ?, 1, 'planned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                oldShipment.or_id,
+                oldShipment.loc_id,
+                `${baseShipmentNo}-A${nextAttempt}`,
+                nextAttempt,
+                oldShipment.sender_name,
+                oldShipment.sender_phone ?? null,
+                oldShipment.sender_email ?? null,
+                oldShipment.sender_address,
+                oldShipment.sender_zip_code ?? null,
+                oldShipment.sender_province_name ?? null,
+                oldShipment.sender_district_name ?? null,
+                oldShipment.sender_subdistrict_name ?? null,
+                oldShipment.recipient_name,
+                oldShipment.recipient_phone ?? null,
+                oldShipment.recipient_address,
+                oldShipment.recipient_zip_code ?? null,
+                oldShipment.recipient_province_name ?? null,
+                oldShipment.recipient_district_name ?? null,
+                oldShipment.recipient_subdistrict_name ?? null,
+            ]
+        );
+
+        await conn.query(
+            `INSERT INTO Order_shipment_items (os_id, or_id, oi_id, pv_id, qty)
+             SELECT ?, or_id, oi_id, pv_id, qty
+             FROM Order_shipment_items
+             WHERE os_id = ?`,
+            [insertResult.insertId, oldShipment.os_id]
+        );
+    }
+
+    await conn.query(
+        `UPDATE Orders
+         SET tracking_no = NULL,
+             tracking_url = NULL,
+             label_url = NULL,
+             shipment_status = 'planned',
+             update_at = CURRENT_TIMESTAMP
+         WHERE or_id = ?`,
+        [or_id]
+    );
+
+    return canceledShipments.length;
 }
 
 // El admin ingresa o edita el número de tracking manualmente cuando el shipment no se creó a través de un provider (admin กรอกหรือแก้ไขเลข tracking เองเมื่อไม่ได้สร้าง shipment ผ่าน provider)
@@ -3708,7 +4044,7 @@ export async function adminUpdateOrderTracking(
         // Si el order tiene un solo shipment, el número de tracking editado manualmente también se sincroniza en esa caja (ถ้า order มี shipment เดียว ให้เลขพัสดุที่แก้ด้วยมือ sync ลงกล่องนั้นด้วย)
         // Pero si hay varios shipments, no se intenta adivinar, porque cada almacén debería tener su propio número de tracking (แต่ถ้ามีหลาย shipment จะไม่เดา เพราะแต่ละคลังควรมีเลขพัสดุแยกกัน)
         const [shipmentCountRows] = await conn.query<(RowDataPacket & { cnt: number })[]>(
-            "SELECT COUNT(*) AS cnt FROM Order_shipments WHERE or_id = ?",
+            "SELECT COUNT(*) AS cnt FROM Order_shipments WHERE or_id = ? AND is_active = 1",
             [or_id]
         );
         if (Number(shipmentCountRows[0]?.cnt ?? 0) === 1) {
@@ -3718,7 +4054,7 @@ export async function adminUpdateOrderTracking(
                      tracking_url = ?,
                      status = COALESCE(NULLIF(status, ''), 'label_created'),
                      updated_at = ?
-                 WHERE or_id = ?`,
+                 WHERE or_id = ? AND is_active = 1`,
                 [trackingNo, trackingUrl, new Date(), or_id]
             );
         }
@@ -3795,13 +4131,18 @@ export async function adminCreateOrderShipment(
         if (order.refund_status === "pending") {
             throw new ApiError(400, "Este pedido tiene una solicitud de reembolso pendiente de revisión. Resuelve la solicitud de reembolso primero.");
         }
-        if (order.status_code !== "PROCESSING" && order.status_code !== "PACKED") {
-            throw new ApiError(400, "El envío solo se puede crear desde el estado PROCESSING o PACKED.");
+        const isReplacement = order.status_code === "READY_TO_SHIP";
+        if (order.status_code !== "PROCESSING" && order.status_code !== "PACKED" && !isReplacement) {
+            throw new ApiError(400, "El envío solo se puede crear desde PROCESSING/PACKED o para reemplazar un shipment cancelado.");
         }
 
-        await setOrdersStatus(conn, [or_id], "READY_TO_SHIP", {
-            remark: "Admin marked order ready to ship and shipment was created",
-        });
+        if (isReplacement) {
+            await prepareReplacementShipments(conn, or_id);
+        } else {
+            await setOrdersStatus(conn, [or_id], "READY_TO_SHIP", {
+                remark: "Admin marked order ready to ship and shipment was created",
+            });
+        }
 
         await createShipmentForOrder(conn, or_id, st_id);
 
@@ -3811,12 +4152,14 @@ export async function adminCreateOrderShipment(
         if (!updated) throw new ApiError(404, "No se encontró el pedido.");
 
         await notifyOrderEvent({
-            event: "order:status_updated",
+            event: isReplacement ? "order:shipment_replaced" : "order:status_updated",
             order: updated,
             actor: "admin",
             targets: ["USER"],
-            title: "Pedido listo para enviar",
-            message: `El pedido ${updated.order_no} está listo para enviarse${updated.tracking_no ? `. Número de seguimiento: ${updated.tracking_no}` : ""}.`,
+            title: isReplacement ? "Envío de reemplazo creado" : "Pedido listo para enviar",
+            message: isReplacement
+                ? `Se creó un nuevo envío para el pedido ${updated.order_no}${updated.tracking_no ? `. Número de seguimiento: ${updated.tracking_no}` : ""}.`
+                : `El pedido ${updated.order_no} está listo para enviarse${updated.tracking_no ? `. Número de seguimiento: ${updated.tracking_no}` : ""}.`,
             priority: "HIGH",
         });
 
@@ -3889,7 +4232,7 @@ export async function adminDevMarkOrderDelivered(
         })[]>(
             `SELECT os_id, tracking_no, tracking_url
              FROM Order_shipments
-             WHERE or_id = ?
+             WHERE or_id = ? AND is_active = 1
              ORDER BY os_id DESC
              LIMIT 1
              FOR UPDATE`,
